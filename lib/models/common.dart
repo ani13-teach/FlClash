@@ -419,11 +419,18 @@ extension GroupsExt on List<Group> {
   }
 }
 
+const stickyGroupPrefix = '[Sticky] ';
+
 extension GroupExt on Group {
   String get realNow => now ?? '';
 
+  // The Core switches a sticky group by itself, so the selection persisted in
+  // the profile is stale and the group's own `now` is the truth.
+  bool get isSticky =>
+      type == GroupType.Selector && name.startsWith(stickyGroupPrefix);
+
   String getCurrentSelectedName(String proxyName) {
-    if (type.isComputedSelected) {
+    if (isSticky || type.isComputedSelected) {
       return realNow.isNotEmpty ? realNow : proxyName;
     }
     return proxyName.isNotEmpty ? proxyName : realNow;

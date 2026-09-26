@@ -22,8 +22,14 @@ class CoreManager extends ConsumerStatefulWidget {
 }
 
 class _CoreContainerState extends ConsumerState<CoreManager>
-    with CoreEventListener {
+    with CoreEventListener, WidgetsBindingObserver {
+  static const _stickyGroupsSyncInterval = Duration(seconds: 2);
+
   CoreController get _core => ref.read(coreHandlerProvider);
+
+  Timer? _stickyGroupsSyncTimer;
+  bool _isSyncingStickyGroups = false;
+  bool _hasStickyGroups = false;
 
   @override
   Widget build(BuildContext context) {
@@ -33,6 +39,11 @@ class _CoreContainerState extends ConsumerState<CoreManager>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _stickyGroupsSyncTimer = Timer.periodic(
+      _stickyGroupsSyncInterval,
+      (_) => _syncStickyGroups(),
+    );
     coreEventManager.addListener(this);
     ref.read(updatingActionProvider.notifier);
     // A rejected profile stays selected on purpose: silently reverting to
@@ -62,8 +73,43 @@ class _CoreContainerState extends ConsumerState<CoreManager>
 
   @override
   void dispose() {
+    _stickyGroupsSyncTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     coreEventManager.removeListener(this);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _syncStickyGroups();
+    }
+  }
+
+  void _syncStickyGroups() {
+    if (_isSyncingStickyGroups) {
+      return;
+    }
+    final lifecycleState = WidgetsBinding.instance.lifecycleState;
+    if (lifecycleState != null && lifecycleState != AppLifecycleState.resumed) {
+      return;
+    }
+    if (ref.read(coreStatusProvider) != CoreStatus.connected) {
+      return;
+    }
+    final groups = ref.read(groupsProvider);
+    if (groups.isNotEmpty) {
+      _hasStickyGroups = groups.any((group) => group.isSticky);
+    }
+    if (!_hasStickyGroups) {
+      return;
+    }
+    _isSyncingStickyGroups = true;
+    unawaited(
+      ref.read(proxiesActionProvider.notifier).updateGroups().whenComplete(() {
+        _isSyncingStickyGroups = false;
+      }),
+    );
   }
 
   @override

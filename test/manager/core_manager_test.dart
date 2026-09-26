@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:fl_clash/common/common.dart';
@@ -9,6 +10,7 @@ import 'package:fl_clash/l10n/l10n.dart';
 import 'package:fl_clash/manager/core_manager.dart';
 import 'package:fl_clash/manager/status_manager.dart';
 import 'package:fl_clash/models/models.dart';
+import 'package:fl_clash/providers/action.dart';
 import 'package:fl_clash/providers/app.dart';
 import 'package:fl_clash/providers/config.dart';
 import 'package:fl_clash/providers/core.dart';
@@ -25,6 +27,21 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../helpers/test_profiles.dart';
 
 class _MockCoreHandlerInterface extends Mock implements CoreHandlerInterface {}
+
+class _StickySyncAction extends ProxiesAction {
+  _StickySyncAction(this.responses);
+
+  final List<List<Group>> responses;
+  int calls = 0;
+
+  @override
+  void build() {}
+
+  @override
+  Future<void> updateGroups() async {
+    ref.read(groupsProvider.notifier).value = responses[calls++];
+  }
+}
 
 class _FakePathProvider extends PathProviderPlatform {
   final String root;
@@ -234,6 +251,155 @@ void main() {
     expect(find.text('boom'), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  group('sticky group sync', () {
+    const stickyGroup = Group(
+      name: '[Sticky] auto',
+      type: GroupType.Selector,
+      now: 'proxy-b',
+    );
+
+    late Completer<ProxiesData> proxies;
+
+    setUp(() {
+      proxies = Completer<ProxiesData>();
+    });
+
+    Future<(ProviderContainer, _MockCoreHandlerInterface)> pumpSync(
+      WidgetTester tester, {
+      required List<Group> groups,
+      CoreStatus status = CoreStatus.connected,
+    }) async {
+      final coreInterface = _coreInterface();
+      when(() => coreInterface.getProxies()).thenAnswer((_) => proxies.future);
+      final container = await _pumpCoreManager(
+        tester,
+        coreInterface,
+        overrides: [
+          profilesProvider.overrideWith(() => TestProfiles()),
+          currentProfileIdProvider.overrideWithBuild((_, _) => null),
+        ],
+      );
+      container.read(groupsProvider.notifier).value = groups;
+      container.read(coreStatusProvider.notifier).value = status;
+      return (container, coreInterface);
+    }
+
+    testWidgets('a sticky group is re-read while the core is connected', (
+      tester,
+    ) async {
+      final (_, coreInterface) = await pumpSync(tester, groups: [stickyGroup]);
+
+      await tester.pump(const Duration(seconds: 2));
+
+      verify(() => coreInterface.getProxies()).called(1);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('a sync in flight is not overlapped by the next interval', (
+      tester,
+    ) async {
+      final (_, coreInterface) = await pumpSync(tester, groups: [stickyGroup]);
+
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump(const Duration(seconds: 2));
+
+      verify(() => coreInterface.getProxies()).called(1);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('groups without the sticky prefix are not re-read', (
+      tester,
+    ) async {
+      final (_, coreInterface) = await pumpSync(
+        tester,
+        groups: const [
+          Group(name: 'Manual', type: GroupType.Selector, now: 'proxy-a'),
+          Group(name: '[Sticky] auto', type: GroupType.URLTest, now: 'proxy-a'),
+        ],
+      );
+
+      await tester.pump(const Duration(seconds: 2));
+
+      verifyNever(() => coreInterface.getProxies());
+
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('nothing is re-read while the core is not connected', (
+      tester,
+    ) async {
+      final (_, coreInterface) = await pumpSync(
+        tester,
+        groups: [stickyGroup],
+        status: CoreStatus.connecting,
+      );
+
+      await tester.pump(const Duration(seconds: 2));
+
+      verifyNever(() => coreInterface.getProxies());
+
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('the sync pauses in background and resumes on return', (
+      tester,
+    ) async {
+      final (_, coreInterface) = await pumpSync(tester, groups: [stickyGroup]);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump(const Duration(seconds: 2));
+
+      verifyNever(() => coreInterface.getProxies());
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+
+      verify(() => coreInterface.getProxies()).called(1);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('an empty response does not stop subsequent sticky sync', (
+      tester,
+    ) async {
+      final action = _StickySyncAction([
+        [],
+        [stickyGroup],
+      ]);
+      final container = await _pumpCoreManager(
+        tester,
+        _coreInterface(),
+        overrides: [proxiesActionProvider.overrideWith(() => action)],
+      );
+      container.read(groupsProvider.notifier).value = [
+        stickyGroup.copyWith(now: 'proxy-a'),
+      ];
+      container.read(coreStatusProvider.notifier).value = CoreStatus.connected;
+
+      await tester.pump(const Duration(seconds: 2));
+      expect(container.read(groupsProvider), isEmpty);
+      await tester.pump(const Duration(seconds: 2));
+
+      expect(action.calls, 2);
+      expect(
+        container.read(groupsProvider).single.getCurrentSelectedName('proxy-a'),
+        'proxy-b',
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('the sync timer stops with the manager', (tester) async {
+      final (_, coreInterface) = await pumpSync(tester, groups: [stickyGroup]);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 4));
+
+      verifyNever(() => coreInterface.getProxies());
+    });
   });
 
   testWidgets('the log stream follows the openLogs setting', (tester) async {

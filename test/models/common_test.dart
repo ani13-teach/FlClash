@@ -217,6 +217,55 @@ void main() {
     });
   });
 
+  group('GroupExt selection', () {
+    test('a sticky selector shows the core selection over the stored one', () {
+      const group = Group(
+        name: '[Sticky] auto',
+        type: GroupType.Selector,
+        now: 'Proxy A',
+      );
+
+      expect(group.isSticky, isTrue);
+      expect(group.getCurrentSelectedName('Proxy B'), 'Proxy A');
+    });
+
+    test('a sticky selector falls back to the stored selection', () {
+      const group = Group(name: '[Sticky] auto', type: GroupType.Selector);
+
+      expect(group.getCurrentSelectedName('Proxy B'), 'Proxy B');
+    });
+
+    test('a plain selector keeps preferring the stored selection', () {
+      const group = Group(
+        name: 'Manual',
+        type: GroupType.Selector,
+        now: 'Proxy A',
+      );
+
+      expect(group.isSticky, isFalse);
+      expect(group.getCurrentSelectedName('Proxy B'), 'Proxy B');
+      expect(group.getCurrentSelectedName(''), 'Proxy A');
+    });
+
+    test('only a selector carrying the prefix is sticky', () {
+      const urlTest = Group(
+        name: '[Sticky] auto',
+        type: GroupType.URLTest,
+        now: 'Proxy A',
+      );
+      const insideName = Group(
+        name: 'Manual [Sticky] auto',
+        type: GroupType.Selector,
+        now: 'Proxy A',
+      );
+
+      expect(urlTest.isSticky, isFalse);
+      expect(urlTest.getCurrentSelectedName('Proxy B'), 'Proxy A');
+      expect(insideName.isSticky, isFalse);
+      expect(insideName.getCurrentSelectedName('Proxy B'), 'Proxy B');
+    });
+  });
+
   group('IpInfo parsers', () {
     test('parse supported response shapes', () {
       expect(

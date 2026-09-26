@@ -377,9 +377,15 @@ func applyConfig(params *SetupParams) error {
 	runtime.GC()
 	configMu.Lock()
 	defer configMu.Unlock()
+	beginStickyConfig()
+	defer endStickyConfig()
 
 	setTestURL(params.TestURL)
-	cfg, err := loadConfig(filepath.Join(constant.Path.HomeDir(), "config.yaml"))
+	configData, err := os.ReadFile(filepath.Join(constant.Path.HomeDir(), "config.yaml"))
+	var cfg *config.Config
+	if err == nil {
+		cfg, err = executor.ParseWithBytes(configData)
+	}
 	if err != nil {
 		// The fallback is what keeps the listeners serving while the host
 		// reports the error, but it applies a config with no proxies in it.
@@ -400,7 +406,9 @@ func applyConfig(params *SetupParams) error {
 	currentConfig = cfg
 	hub.ApplyConfig(cfg)
 	patchSelectGroup(params.SelectedMap)
+	configureSticky(configData, err == nil)
 	updateListeners(cfg)
+	reconcileSticky()
 	reconcileGeoUpdater()
 	return err
 }

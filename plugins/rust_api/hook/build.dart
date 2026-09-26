@@ -16,14 +16,20 @@ void main(List<String> args) async {
   });
 }
 
-// rquickjs runs bindgen on Android, which must load the NDK's libclang; Linux
-// NDKs before r26 keep it under lib64, later ones and every macOS NDK under lib.
+// Windows NDKs omit libclang, so bindgen may need an external LLVM install.
 Map<String, String> _bindgenEnvironment(BuildInput input) {
   if (!input.config.buildCodeAssets ||
       input.config.code.targetOS != OS.android) {
     return const {};
   }
   final compiler = input.config.code.cCompiler?.compiler;
+  final override = Platform.environment['LIBCLANG_PATH'];
+  if (override != null && override.isNotEmpty) {
+    return {
+      'LIBCLANG_PATH': override,
+      if (compiler != null) 'CLANG_PATH': File.fromUri(compiler).path,
+    };
+  }
   if (compiler == null) {
     return const {};
   }

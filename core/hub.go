@@ -53,6 +53,7 @@ func handleStartListener() bool {
 	defer configMu.Unlock()
 	isRunning.Store(true)
 	updateListeners(currentConfig)
+	reconcileSticky()
 	resolver.ResetConnection()
 	return true
 }
@@ -61,6 +62,7 @@ func handleStopListener() bool {
 	configMu.Lock()
 	defer configMu.Unlock()
 	isRunning.Store(false)
+	stopSticky()
 	listener.StopListener()
 	resolver.ResetConnection()
 	return true
@@ -84,6 +86,7 @@ func handleShutdown() bool {
 
 	configMu.Lock()
 	isRunning.Store(false)
+	stopSticky()
 	listener.StopListener()
 	updater.StopGeoUpdater()
 	executor.Shutdown()
@@ -197,11 +200,13 @@ func handleChangeProxy(params *ChangeProxyParams) string {
 	}
 	if params.ProxyName == "" {
 		selector.ForceSet(params.ProxyName)
+		recordStickySelection(params.GroupName)
 		return ""
 	}
 	if err := selector.Set(params.ProxyName); err != nil {
 		return err.Error()
 	}
+	recordStickySelection(params.GroupName)
 	return ""
 }
 
@@ -533,13 +538,17 @@ func defaultRefreshHealthChecks() {
 var refreshHealthChecks = defaultRefreshHealthChecks
 
 func handleSuspend(suspended bool) bool {
+	configMu.Lock()
+	defer configMu.Unlock()
 	wasSuspended := isSuspended.Swap(suspended)
 	if suspended {
+		stopSticky()
 		tunnel.OnSuspend()
 		return true
 	}
 
 	tunnel.OnRunning()
+	reconcileSticky()
 	// Provider health checks keep ticking through Doze, where the app has no
 	// network at all, so coming back means every proxy is marked dead and every
 	// delay reads Timeout. A lazy provider then skips its next tick because
