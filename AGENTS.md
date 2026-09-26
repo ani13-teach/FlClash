@@ -53,4 +53,4 @@ Read these only when the task touches their area:
 ## Repo Skills
 
 Use repo skills from `.agents/skills/` when a task matches their descriptions. Current skills cover localization,
-provider tests, UI work, and core/platform changes.
+provider tests, UI work, core/platform changes, and Sticky Failover maintenance.
