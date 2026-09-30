@@ -153,9 +153,13 @@ function main(config) {
     if (index > 0) parts[index] = mapTarget(parts[index].trim());
     return parts.join(",");
   }
-  config.rules = Array.isArray(config.rules) && config.rules.length
-    ? config.rules.map(rewriteRule)
-    : ["MATCH," + entry];
+  config.rules = [
+    "DOMAIN-KEYWORD,haerapi,DIRECT",
+    "DOMAIN-KEYWORD,pineonly,DIRECT",
+    ...(Array.isArray(config.rules) && config.rules.length
+      ? config.rules.map(rewriteRule)
+      : ["MATCH," + entry]),
+  ];
   Object.keys(config["sub-rules"] || {}).forEach((name) => {
     config["sub-rules"][name] = config["sub-rules"][name].map(rewriteRule);
   });
