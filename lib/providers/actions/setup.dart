@@ -333,14 +333,12 @@ class SetupAction extends _$SetupAction {
     final routeMode = networkSetting.routeMode;
     final configMap = await _core.getConfig(profileId);
     String? scriptContent;
-    final List<Rule> addedRules = [];
+    final addedRules = setupState.addedRules;
     final List<ProxyGroup> proxyGroups = [];
     final List<Rule> rules = [];
     if (setupState.overwriteType == OverwriteType.script) {
       scriptContent = await setupState.script?.content;
-    } else if (setupState.overwriteType == OverwriteType.standard) {
-      addedRules.addAll(setupState.addedRules);
-    } else {
+    } else if (setupState.overwriteType == OverwriteType.custom) {
       proxyGroups.addAll(setupState.proxyGroups);
       rules.addAll(setupState.rules);
     }

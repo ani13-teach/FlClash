@@ -53,6 +53,13 @@ Future<SetupState> setupState(Ref ref, int? profileId) async {
     if (overwriteType == OverwriteType.standard) {
       addedRules = await database.rulesDao.queryAddedRules(profileId).get();
     } else if (overwriteType == OverwriteType.script) {
+      final disabledRules = await database.rulesDao
+          .queryProfileDisabledRules(profileId)
+          .get();
+      final disabledIds = disabledRules.map((rule) => rule.id).toSet();
+      addedRules = (await database.rulesDao.queryGlobalAddedRules().get())
+          .where((rule) => !disabledIds.contains(rule.id))
+          .toList();
       script = scriptId == null
           ? null
           : await database.scriptsDao.get(scriptId).getSingleOrNull();
