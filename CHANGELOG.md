@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.8.99 (2026-10-04)
+
+**Features**
+
+- **core** Keep healthy proxy selections and switch to a working node when one fails (ce66b3f)
+
+**Bug Fixes**
+
+- **sticky** Route haerapi and pineonly directly in the Sticky override script (8548807)
+- **rules** Global added rules now take effect with script overrides (bdb682e)
+
 ## v0.8.98 (2026-09-14)
 
 **Bug Fixes**

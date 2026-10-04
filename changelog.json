@@ -2,6 +2,39 @@
   "schemaVersion": 2,
   "versions": [
     {
+      "version": "0.8.99",
+      "tag": "v0.8.99",
+      "date": "2026-10-04",
+      "prerelease": false,
+      "groups": [
+        {
+          "type": "feat",
+          "entries": [
+            {
+              "id": "ce66b3f",
+              "scope": "core",
+              "text": "Keep healthy proxy selections and switch to a working node when one fails"
+            }
+          ]
+        },
+        {
+          "type": "fix",
+          "entries": [
+            {
+              "id": "8548807",
+              "scope": "sticky",
+              "text": "Route haerapi and pineonly directly in the Sticky override script"
+            },
+            {
+              "id": "bdb682e",
+              "scope": "rules",
+              "text": "Global added rules now take effect with script overrides"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "version": "0.8.98",
       "tag": "v0.8.98",
       "date": "2026-09-14",
