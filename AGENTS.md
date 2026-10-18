@@ -5,6 +5,9 @@ This file is the entry point for AI coding agents working in this repository. Ke
 
 ## Start Here
 
+For a user/developer introduction, read [PROJECT.md](PROJECT.md): fork-specific behavior, first run, toolchains,
+packaging/signing, data locations, and troubleshooting.
+
 Read these files before making changes:
 
 - [.agents/project.md](.agents/project.md): project overview, versions, and build dependencies.
@@ -34,6 +37,10 @@ Read these only when the task touches their area:
   touch. Preserve
   `// ignore:`-style directives, license headers, codegen markers, and vendored upstream comments. See
   [.agents/rules.md](.agents/rules.md) for what belongs in a test or in `.agents/` instead.
+- Before packaging, if source code has changed since the previous package, bump `pubspec.yaml`'s `version`; this applies
+  to local test packages and releases. Use the smallest increment: advance only the build number after `+` via
+  `bash tool/bump_version.sh minor`, ensuring it exceeds the previous package's build number. Do not additionally bump
+  major/minor/patch unless explicitly required for the release. Unchanged-source rebuilds do not require a bump.
 - Use `flutter test`, not `dart test`, because models pull in Flutter types.
 - Run code generation after modifying models, providers, or database schema.
 - Do not manually edit generated files.

@@ -36,7 +36,7 @@ Key Go core files:
 
 - `core/hub.go`: handler functions.
 - `core/method.go`: MethodChannel-style method-call dispatch and response envelopes.
-- `core/message.go`: non-blocking priority/bulk event queues and bounded message batching.
+- `core/message.go`: separate non-blocking state, priority/delay, and bulk event queues with bounded message batching.
 - `core/lib.go`: CGO exports.
 - `core/server.go`: desktop socket/named-pipe client and framed message forwarding.
 
@@ -122,9 +122,11 @@ Android deliberately keeps Flutter requests optimistic and the native layer auth
 
 - `ServicePlugin.start()` and `stop()` acknowledge immediately after submitting intent. They do not wait for service
   creation, VPN permission, binding, TUN establishment, or teardown.
-- `ServiceState` owns the latest `RunRequest`, shared configuration, run time, and `STOPPED`/`STARTING`/`STARTED`/`STOPPING`
-  state. Identity checks discard obsolete work. `startPreparationLock` serializes permission/setup preparation and
-  `transitionLock` serializes actual service transitions.
+- `ServiceState` is the facade for `ServiceStateMachine`, which owns the latest `RunRequest`, shared configuration,
+  and `STOPPED`/`STARTING`/`STARTED`/`STOPPING` state. Identity checks discard obsolete work. `startPreparationLock`
+  serializes permission/setup preparation and `transitionLock` serializes actual service transitions.
+  `ServiceStateHost.kt` defines the host boundary and `AndroidServiceStateHost`, which supplies Android/Flutter APIs
+  and service run-time reads; JVM tests can drive the same machine with a fake host.
 - `ServiceController` owns exactly one `ManagedServiceBinding`, selects `VpnService` or `ProxyService` from `VpnOptions`,
   binds with a five-second connection timeout, invokes `ManagedService.start()`/`stop()` off the main thread, and clears
   binding/run-time state on failure or disconnection.
@@ -156,12 +158,14 @@ remain strings.
 
 Go event delivery is intentionally non-blocking:
 
-- State-bearing events such as delay, loaded-provider, and geo-update use a 256-entry priority queue. Desktop process
-  crashes are generated locally by `CoreService` from lifecycle failures rather than sent through the Go queue.
-- High-volume log and request/connection events use a separate 256-entry bulk queue, so bulk floods cannot evict state.
-- A full queue evicts only its own oldest event and retries the newest event; Core work never blocks on event delivery.
-- The batcher flushes at 32 messages or every 16 milliseconds. Priority events are preferred, but one bulk opportunity is
-  guaranteed after eight priority messages to prevent starvation.
+- Loaded-provider and geo-update events use a dedicated 256-entry state queue. It never evicts queued state; when full,
+  it drops the incoming event rather than blocking. Stale updating-state recovery remains necessary after prolonged
+  host backpressure. Desktop process crashes are generated locally by `CoreService`, not through the Go queue.
+- Delay and other priority events use a separate 256-entry priority queue; log and request/connection events use a
+  256-entry bulk queue. These two queues may evict only their own oldest events while retrying the incoming event.
+- The batcher checks state first and flushes at 32 messages or after a 16-millisecond batch timer. After eight priority
+  messages it offers bulk a read opportunity, subject to state preference. A stalled desktop write can delay the batcher;
+  these thresholds are not a guarantee of end-to-end delivery time.
 
 Desktop RPC accepts both a single event object and batched event lists. Android and desktop listener dispatch isolate
 listener exceptions so one faulty observer does not prevent the remaining events/listeners from running.
@@ -179,9 +183,11 @@ surface. It is shown only outside dashboard edit mode and only when `coreLib == 
 - Taps during the display hold or while the provider is genuinely connecting are inert. Connected/disconnected taps show
   the appropriate confirmation and delegate restart to `CoreAction`; the widget never starts Core directly.
 
-Proxy delay testing follows the same failure-safe UI rule. `proxyDelayTest()` records an in-progress zero delay, writes the
-real result on success, and logs plus records `-1` on exceptions. `DelayTestButton` reverses its animation in `finally`, so
-an RPC failure cannot leave the control permanently spinning.
+Proxy delay testing keeps progress separate from measurements. `ProxiesAction` resolves and deduplicates targets,
+acquires their keys in `pendingDelayTestsProvider`, and releases them in `finally`. It writes only an actual Core result;
+a missing response or transport exception preserves the previous measurement rather than inventing a node failure.
+A Core-unavailable exception cancels the remaining work in that job, and leaving `connected` cancels all active jobs.
+`DelayTestButton` also reverses its animation in `finally`, so an RPC failure cannot leave the control spinning.
 
 ## Settings Rows
 
@@ -275,7 +281,7 @@ the key directly, so the dialog helpers no longer import `lib/state.dart`.
 
 `lib/common/common.dart` deliberately does not export `tray.dart`, `window.dart`,
 `launch.dart`, `system_dns.dart`, or `permission.dart`. Those five modules import
-`tray_manager`, `window_manager`, `launch_at_startup`, and `screen_retriever`;
+`tray`, `window_manager`, `launch_at_startup`, and `screen_retriever`;
 exporting them put those packages in the compile graph of all 132 files that
 import the barrel for a string helper. Import the specific module instead.
 
@@ -356,7 +362,9 @@ a buffer you own outright (seeding, resets, tests), never on published state.
 
 ## Database
 
-The app uses Drift/SQLite in `lib/database/`. Current schema version is 2.
+The app uses Drift/SQLite in `lib/database/`. Current schema version is 3 (`Database.schemaVersion`). Version 2 added
+proxy-group/icon tables and migrated rules; version 3 adds `Profiles.matchTarget`. The v3 migration checks for an existing
+column because a downgrade can retain columns even when Drift rewinds `user_version`.
 
 Tables:
 
@@ -376,7 +384,7 @@ Generated Drift output lives in `lib/database/generated/database.g.dart`. After 
 Managers are nested `InheritedWidget`/`StatefulWidget` components built by `buildManagerStack()` in `lib/application.dart`:
 
 ```text
-AppEnvManager > StatusManager > ThemeManager
+AppEnvManager > LocaleManager > StatusManager > ThemeManager
   > [Desktop: WindowManager > TrayManager > HotKeyManager > ProxyManager]
     [Mobile:  AndroidManager > TileManager]
   > AppStateManager > CoreManager > ConnectivityManager
@@ -401,7 +409,7 @@ updating both this diagram and that test.
 
 ## Core Controller and Actions
 
-`lib/core/controller.dart` (`CoreController`) is a singleton facade over `CoreHandlerInterface`. Public methods delegate to the platform-specific interface, either Android FFI or desktop socket. It has an `@visibleForTesting` constructor and `resetInstance()` for test injection.
+`lib/core/controller.dart` (`CoreController`) is a singleton facade over `CoreHandlerInterface`. Public methods delegate to the platform-specific interface, either the Android Service/JNI path or desktop local IPC. It has an `@visibleForTesting` constructor and `resetInstance()` for test injection.
 
 `lib/providers/action.dart` is the public library entry point for action
 providers. The Riverpod notifier implementations are split by responsibility
@@ -452,6 +460,7 @@ Shared:
 - `AppStateManager`
 - `StatusManager`
 - `ThemeManager`
+- `LocaleManager`
 
 ## Build System
 
@@ -590,7 +599,8 @@ detect. Verify a change here with `./gradlew ":core:buildCMakeDebug[arm64-v8a]" 
 - `rust_api`: runtime Flutter Rust Bridge FFI package built through Native Assets. See below.
 - `tray`: system tray for Linux, macOS and Windows. Written for FlClash; replaced the `tray_manager` fork.
 - `wifi_ssid`: Wi-Fi SSID detection.
-- `flutter_distributor`: app packaging/distribution.
+
+`flutter_distributor` is a globally activated packaging tool, not a local plugin. Its fork/tag is selected by `setup.dart`.
 
 ## rust_api Crate Layout
 

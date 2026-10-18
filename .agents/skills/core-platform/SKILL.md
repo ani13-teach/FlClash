@@ -15,7 +15,8 @@ hooks, system proxy, tray, VPN, TUN, or platform-specific desktop/mobile behavio
 1. Identify the authoritative owner before changing behavior:
    - Shared facade/protocol: `lib/core/controller.dart`, `lib/core/interface.dart`, and `lib/core/method.dart`.
    - Android Core connection: `lib/core/lib.dart`, `lib/plugins/service.dart`, and Android `ServicePlugin`.
-   - Android start/stop intent: `ServiceState`; binding/process-time bookkeeping: `ServiceController`.
+   - Android start/stop intent: `ServiceState` facade and `ServiceStateMachine`; Android API boundary:
+     `ServiceStateHost.kt` / `AndroidServiceStateHost`; binding/process-time bookkeeping: `ServiceController`.
    - Desktop composition: `lib/core/service.dart`; lifecycle/process ownership: `lib/core/desktop/lifecycle.dart`.
    - Desktop IPC/RPC: `lib/core/desktop/transport.dart` and `lib/core/desktop/rpc_client.dart`.
    - Desktop launch ownership: `lib/core/desktop/launcher.dart`; Windows Helper HTTP contract:
@@ -29,7 +30,7 @@ hooks, system proxy, tray, VPN, TUN, or platform-specific desktop/mobile behavio
 4. Route feature calls through `CoreController` and `CoreHandlerInterface`. Do not bypass desktop process leases or create a
    second Android service binding owner.
 5. Keep JSON envelopes and event shapes identical across Dart, Go, JNI, and desktop IPC. If event traffic changes, preserve
-   the separate priority and bulk queues in `core/message.go`.
+   the separate state, priority/delay, and bulk queues in `core/message.go`.
 6. Keep shutdown single-owned and terminal. `SystemExitCoordinator` sequences resource cleanup, window close, Core close,
    and process exit; widget/manager disposal must not race it.
 7. Add or update focused tests at the narrowest layer, then run the matching commands from `.agents/commands.md`:
@@ -66,7 +67,8 @@ Read `.agents/architecture.md` for the current core modes, manager stack, build 
   not become a service timeout.
 - Do not interpret service creation/destruction as start/stop intent. Always-on startup is explicit through
   `VPN_START_REQUESTED`; revoke is explicit through `VPN_REVOKED`.
-- Keep log/request floods from evicting state-bearing Core events. Each queue may evict only its own oldest item.
+- Keep log/request floods from evicting state-bearing Core events. Only priority/delay and bulk queues evict their own
+  oldest item; the state queue never evicts queued events and drops incoming events when full.
 - Do not expose direct filesystem deletion APIs through Core or helper IPC; use
   a scope-specific cleanup API instead.
 - `plugins/setup/` is a build harness, not a Dart API plugin.

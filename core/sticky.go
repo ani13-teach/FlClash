@@ -16,6 +16,7 @@ import (
 	"github.com/metacubex/mihomo/adapter"
 	"github.com/metacubex/mihomo/adapter/outboundgroup"
 	"github.com/metacubex/mihomo/constant"
+	"github.com/metacubex/mihomo/log"
 	"github.com/metacubex/mihomo/tunnel"
 )
 
@@ -23,7 +24,7 @@ const (
 	stickyPrefix     = "[Sticky] "
 	stickyURL        = "https://cp.cloudflare.com"
 	stickyInterval   = time.Second
-	stickyTimeout    = 2 * time.Second
+	stickyTimeout    = 5 * time.Second
 	stickyRetryDelay = 5 * time.Second
 )
 
@@ -247,7 +248,7 @@ func (b *mihomoStickyBackend) Probe(ctx context.Context, snapshot stickySnapshot
 	if exists {
 		select {
 		case <-probe.done:
-			exists = time.Now().Before(probe.expires)
+			exists = probe.healthy && time.Now().Before(probe.expires)
 		default:
 		}
 	} else {
@@ -299,11 +300,19 @@ func (b *mihomoStickyBackend) probeNode(ctx context.Context, proxy constant.Prox
 	}
 	probeCtx, cancel := context.WithTimeout(ctx, stickyTimeout)
 	defer cancel()
-	_, err := proxy.URLTest(probeCtx, stickyURL, anyDelayTestStatus)
+	started := time.Now()
+	delay, err := proxy.URLTest(probeCtx, stickyURL, anyDelayTestStatus)
+	elapsed := time.Since(started)
 	if ctx.Err() != nil {
 		return false, ctx.Err()
 	}
-	return err == nil && probeCtx.Err() == nil, nil
+	deadlineErr := probeCtx.Err()
+	healthy := err == nil && deadlineErr == nil
+	if !healthy {
+		log.Warnln("[Sticky] probe failed: node=%q url=%s elapsed=%s delay=%d urltest_err=%v deadline_err=%v",
+			proxy.Name(), stickyURL, elapsed, delay, err, deadlineErr)
+	}
+	return healthy, nil
 }
 
 func (b *mihomoStickyBackend) Commit(snapshot stickySnapshot, candidate string) bool {
@@ -318,6 +327,9 @@ func (b *mihomoStickyBackend) Commit(snapshot stickySnapshot, candidate string) 
 		return false
 	}
 	recordStickySelection(snapshot.Group)
+	if current.Current != candidate {
+		log.Infoln("[Sticky] switch: group=%q %q -> %q", snapshot.Group, current.Current, candidate)
+	}
 	return true
 }
 

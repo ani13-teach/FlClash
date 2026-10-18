@@ -9,6 +9,7 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, 'sticky_override.js'), 'utf
 const apply = (config) => JSON.parse(JSON.stringify(context.main(structuredClone(config))));
 const proxy = (name) => ({ name, type: 'ss', server: '127.0.0.1', port: 1234 });
 const sticky = (config) => config['proxy-groups'].filter((g) => g.name.startsWith('[Sticky] '));
+const directRules = ['DOMAIN-KEYWORD,haerapi,DIRECT', 'DOMAIN-KEYWORD,pineonly,DIRECT'];
 
 test('creates direct-member selectors without automatic failback groups', () => {
   const result = apply({ proxies: ['US-01', 'JP-01', 'HK-01', '香港-02', 'unknown'].map(proxy) });
@@ -20,7 +21,7 @@ test('creates direct-member selectors without automatic failback groups', () => 
     assert.equal(group.interval, undefined);
     assert.ok(group.proxies.every((name) => result.proxies.some((p) => p.name === name)));
   }
-  assert.deepEqual(result.rules, ['MATCH,节点选择']);
+  assert.deepEqual(result.rules, [...directRules, 'MATCH,节点选择']);
 });
 
 test('dynamic providers retain filters and disable full-pool health checks', () => {
@@ -48,7 +49,7 @@ test('rewrites policy targets while preserving direct and reject rules', () => {
     rules: ['DOMAIN,a.test,old', 'DOMAIN,b.test,local', 'DOMAIN,c.test,blocked', 'IP-CIDR,1.2.3.0/24,old,no-resolve'],
     dns: { nameserver: ['https://dns.test/dns-query#old&h3'] },
   });
-  assert.deepEqual(result.rules, ['DOMAIN,a.test,节点选择', 'DOMAIN,b.test,DIRECT', 'DOMAIN,c.test,REJECT', 'IP-CIDR,1.2.3.0/24,节点选择,no-resolve']);
+  assert.deepEqual(result.rules, [...directRules, 'DOMAIN,a.test,节点选择', 'DOMAIN,b.test,DIRECT', 'DOMAIN,c.test,REJECT', 'IP-CIDR,1.2.3.0/24,节点选择,no-resolve']);
   assert.deepEqual(result.dns.nameserver, ['https://dns.test/dns-query#节点选择&h3']);
 });
 

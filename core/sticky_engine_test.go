@@ -101,13 +101,23 @@ func assertCommitted(t *testing.T, fake *stickyFake, want []string) {
 	}
 }
 
+func confirmStickyFailure(t *testing.T, fake *stickyFake) stickyFailureState {
+	t.Helper()
+	var failures stickyFailureState
+	assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot, &failures), stickyFailurePending)
+	assertProbed(t, fake, []string{fake.snapshot.Current})
+	assertCommitted(t, fake, nil)
+	fake.probed = nil
+	return failures
+}
+
 func TestStickyStepKeepsHealthyCurrentWithoutTouchingBackups(t *testing.T) {
 	fake := newStickyFake("a", "a", "b", "c")
 	fake.healthy["a"] = true
 	fake.healthy["b"] = true
 	fake.healthy["c"] = true
 
-	assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot), stickyCurrentHealthy)
+	assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot, &stickyFailureState{}), stickyCurrentHealthy)
 	assertProbed(t, fake, []string{"a"})
 	assertCommitted(t, fake, nil)
 }
@@ -116,13 +126,14 @@ func TestStickyStepDoesNotReclaimRecoveredCurrent(t *testing.T) {
 	fake := newStickyFake("a", "a", "b")
 	fake.healthy["b"] = true
 
-	assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot), stickyCommitted)
+	failures := confirmStickyFailure(t, fake)
+	assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot, &failures), stickyCommitted)
 	assertCommitted(t, fake, []string{"b"})
 
 	fake.probed = nil
 	fake.healthy["a"] = true
 
-	assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot), stickyCurrentHealthy)
+	assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot, &failures), stickyCurrentHealthy)
 	assertProbed(t, fake, []string{"b"})
 	assertCommitted(t, fake, []string{"b"})
 }
@@ -137,7 +148,8 @@ func TestStickyStepSwitchesToFirstHealthyMember(t *testing.T) {
 		}
 	}
 
-	assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot), stickyCommitted)
+	failures := confirmStickyFailure(t, fake)
+	assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot, &failures), stickyCommitted)
 	assertProbed(t, fake, []string{"a", "b", "c", "d"})
 	assertCommitted(t, fake, []string{"c"})
 }
@@ -154,7 +166,8 @@ func TestStickyStepDoesNotWaitForEarlierUnhealthyCandidates(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	assertOutcome(t, stickyStep(ctx, fake, fake.snapshot), stickyCommitted)
+	failures := confirmStickyFailure(t, fake)
+	assertOutcome(t, stickyStep(ctx, fake, fake.snapshot, &failures), stickyCommitted)
 	assertProbed(t, fake, members)
 	assertCommitted(t, fake, []string{"j"})
 }
@@ -162,7 +175,8 @@ func TestStickyStepDoesNotWaitForEarlierUnhealthyCandidates(t *testing.T) {
 func TestStickyStepRetainsCurrentWhenNoMemberIsHealthy(t *testing.T) {
 	fake := newStickyFake("a", "a", "b", "c")
 
-	assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot), stickyNoCandidate)
+	failures := confirmStickyFailure(t, fake)
+	assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot, &failures), stickyNoCandidate)
 	assertProbed(t, fake, []string{"a", "b", "c"})
 	assertCommitted(t, fake, nil)
 }
@@ -172,7 +186,7 @@ func TestStickyStepDoesNotSwitchOnCurrentProbeError(t *testing.T) {
 	fake.healthy["b"] = true
 	fake.probeErrs["a"] = errors.New("probe budget exhausted")
 
-	assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot), stickyProbeError)
+	assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot, &stickyFailureState{}), stickyProbeError)
 	assertProbed(t, fake, []string{"a"})
 	assertCommitted(t, fake, nil)
 }
@@ -182,7 +196,8 @@ func TestStickyStepUsesHealthyCandidateDespiteAnotherProbeError(t *testing.T) {
 	fake.healthy["c"] = true
 	fake.probeErrs["b"] = errors.New("probe budget exhausted")
 
-	assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot), stickyCommitted)
+	failures := confirmStickyFailure(t, fake)
+	assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot, &failures), stickyCommitted)
 	assertProbed(t, fake, []string{"a", "b", "c"})
 	assertCommitted(t, fake, []string{"c"})
 }
@@ -192,7 +207,7 @@ func TestStickyStepStopsBeforeProbingWhenCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	assertOutcome(t, stickyStep(ctx, fake, fake.snapshot), stickyCanceled)
+	assertOutcome(t, stickyStep(ctx, fake, fake.snapshot, &stickyFailureState{}), stickyCanceled)
 	assertProbed(t, fake, nil)
 }
 
@@ -209,7 +224,8 @@ func TestStickyStepStopsScanWhenCanceled(t *testing.T) {
 		}
 	}
 
-	assertOutcome(t, stickyStep(ctx, fake, fake.snapshot), stickyCanceled)
+	failures := confirmStickyFailure(t, fake)
+	assertOutcome(t, stickyStep(ctx, fake, fake.snapshot, &failures), stickyCanceled)
 	assertProbed(t, fake, []string{"a", "b", "c"})
 	assertCommitted(t, fake, nil)
 }
@@ -219,9 +235,145 @@ func TestStickyStepEndsRoundOnRejectedCommit(t *testing.T) {
 	fake.healthy["b"] = true
 	fake.accept = false
 
-	assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot), stickyCommitRejected)
+	failures := confirmStickyFailure(t, fake)
+	assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot, &failures), stickyCommitRejected)
 	assertProbed(t, fake, []string{"a", "b", "c", "d"})
 	assertCommitted(t, fake, []string{"b"})
+}
+
+func TestStickyStepResetsFailuresAfterRecovery(t *testing.T) {
+	fake := newStickyFake("a", "a", "b")
+	fake.healthy["b"] = true
+	failures := confirmStickyFailure(t, fake)
+	fake.healthy["a"] = true
+	assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot, &failures), stickyCurrentHealthy)
+	if failures.failures != 0 {
+		t.Fatalf("failures = %d after recovery, want 0", failures.failures)
+	}
+	fake.healthy["a"] = false
+	fake.probed = nil
+	assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot, &failures), stickyFailurePending)
+	assertProbed(t, fake, []string{"a"})
+	assertCommitted(t, fake, nil)
+	assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot, &failures), stickyCommitted)
+	assertCommitted(t, fake, []string{"b"})
+}
+
+func TestStickyStepProbeErrorDoesNotConfirmFailure(t *testing.T) {
+	for _, probeErr := range []error{context.DeadlineExceeded, context.Canceled, errors.New("stale snapshot")} {
+		t.Run(probeErr.Error(), func(t *testing.T) {
+			fake := newStickyFake("a", "a", "b")
+			fake.healthy["b"] = true
+			failures := confirmStickyFailure(t, fake)
+			fake.probeErrs["a"] = probeErr
+			assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot, &failures), stickyProbeError)
+			if failures.failures != 0 {
+				t.Fatalf("failures = %d after probe error, want 0", failures.failures)
+			}
+			delete(fake.probeErrs, "a")
+			fake.probed = nil
+			assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot, &failures), stickyFailurePending)
+			assertProbed(t, fake, []string{"a"})
+			assertCommitted(t, fake, nil)
+			assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot, &failures), stickyCommitted)
+		})
+	}
+}
+
+func TestStickyStepResetsFailuresForNewSelectionSnapshot(t *testing.T) {
+	for _, change := range []string{"current", "revision", "group"} {
+		t.Run(change, func(t *testing.T) {
+			fake := newStickyFake("a", "a", "b", "c")
+			fake.healthy["b"] = true
+			failures := confirmStickyFailure(t, fake)
+			switch change {
+			case "current":
+				fake.snapshot.Current = "c"
+			case "revision":
+				fake.snapshot.Revision++
+			case "group":
+				fake.snapshot.Group = "other"
+			}
+			assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot, &failures), stickyFailurePending)
+			assertProbed(t, fake, []string{fake.snapshot.Current})
+			assertCommitted(t, fake, nil)
+			assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot, &failures), stickyCommitted)
+			assertCommitted(t, fake, []string{"b"})
+			if failures.failures != 0 {
+				t.Fatalf("failures = %d after switch, want 0", failures.failures)
+			}
+		})
+	}
+}
+
+func TestStickyStepCancellationClearsFailureConfirmation(t *testing.T) {
+	fake := newStickyFake("a", "a", "b")
+	fake.healthy["b"] = true
+	failures := confirmStickyFailure(t, fake)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	fake.onProbe = func(context.Context, string) { cancel() }
+	assertOutcome(t, stickyStep(ctx, fake, fake.snapshot, &failures), stickyCanceled)
+	assertProbed(t, fake, []string{"a"})
+	assertCommitted(t, fake, nil)
+	if failures.failures != 0 {
+		t.Fatalf("failures = %d after cancellation, want 0", failures.failures)
+	}
+}
+
+func TestStickyStepKeepsConfirmedFailureWhenNoBackupWorks(t *testing.T) {
+	fake := newStickyFake("a", "a", "b")
+	failures := confirmStickyFailure(t, fake)
+	for i := 0; i < 3; i++ {
+		fake.probed = nil
+		assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot, &failures), stickyNoCandidate)
+		assertProbed(t, fake, []string{"a", "b"})
+		if failures.failures != stickyFailureThreshold {
+			t.Fatalf("failures = %d, want capped threshold", failures.failures)
+		}
+	}
+	assertCommitted(t, fake, nil)
+	fake.healthy["a"] = true
+	assertOutcome(t, stickyStep(context.Background(), fake, fake.snapshot, &failures), stickyCurrentHealthy)
+	if failures.failures != 0 {
+		t.Fatalf("failures = %d after recovery, want 0", failures.failures)
+	}
+}
+
+func TestRunStickyGroupConfirmsFailureAcrossRounds(t *testing.T) {
+	fake := newStickyFake("a", "a", "b")
+	fake.healthy["b"] = true
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	fake.onSnapshot = func() {
+		if len(fake.committed) != 0 {
+			cancel()
+		}
+	}
+	runStickyGroup(ctx, fake, "auto", 0, 0)
+	assertProbed(t, fake, []string{"a", "a", "b"})
+	assertCommitted(t, fake, []string{"b"})
+}
+
+func TestRunStickyGroupUnavailableSnapshotResetsFailureConfirmation(t *testing.T) {
+	fake := newStickyFake("a", "a", "b")
+	fake.healthy["b"] = true
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	calls := 0
+	fake.onSnapshot = func() {
+		calls++
+		fake.available = calls != 2
+		if calls == 4 {
+			fake.healthy["a"] = true
+		}
+		if calls == 5 {
+			cancel()
+		}
+	}
+	runStickyGroup(ctx, fake, "auto", 0, 0)
+	assertProbed(t, fake, []string{"a", "a", "a"})
+	assertCommitted(t, fake, nil)
 }
 
 func TestRunStickyGroupWaitsForAvailableSnapshot(t *testing.T) {
@@ -275,7 +427,7 @@ func TestStickyNextWaitHoldsCadenceForCompletedRounds(t *testing.T) {
 	roundStart := time.Unix(1700000000, 0)
 	now := roundStart.Add(3 * time.Second)
 
-	for _, outcome := range []stickyOutcome{stickyCurrentHealthy, stickyCommitted, stickyCommitRejected, stickyProbeError} {
+	for _, outcome := range []stickyOutcome{stickyCurrentHealthy, stickyFailurePending, stickyCommitted, stickyCommitRejected, stickyProbeError} {
 		wait := stickyNextWait(roundStart, now, outcome, 10*time.Second, 2*time.Second)
 		if wait != 7*time.Second {
 			t.Errorf("wait = %v for outcome %d, want 7s measured from the round start", wait, outcome)

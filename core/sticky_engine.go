@@ -28,20 +28,31 @@ const (
 	stickyNoCandidate
 	stickyProbeError
 	stickyCanceled
+	stickyFailurePending
 )
 
+const stickyFailureThreshold = 2
+
+type stickyFailureState struct {
+	group    string
+	current  string
+	revision uint64
+	failures int
+}
+
 func runStickyGroup(ctx context.Context, backend stickyBackend, group string, interval, retryDelay time.Duration) {
-	// The loop sleeps between rounds rather than spawning, so rounds never overlap.
+	var failures stickyFailureState
 	for ctx.Err() == nil {
 		roundStart := time.Now()
 		snapshot, ok := backend.Snapshot(group)
 		if !ok {
+			failures = stickyFailureState{}
 			if !sleepSticky(ctx, retryDelay) {
 				return
 			}
 			continue
 		}
-		outcome := stickyStep(ctx, backend, snapshot)
+		outcome := stickyStep(ctx, backend, snapshot, &failures)
 		if ctx.Err() != nil {
 			return
 		}
@@ -51,17 +62,41 @@ func runStickyGroup(ctx context.Context, backend stickyBackend, group string, in
 	}
 }
 
-func stickyStep(ctx context.Context, backend stickyBackend, snapshot stickySnapshot) stickyOutcome {
+func stickyStep(ctx context.Context, backend stickyBackend, snapshot stickySnapshot, failures *stickyFailureState) stickyOutcome {
 	if ctx.Err() != nil {
+		*failures = stickyFailureState{}
 		return stickyCanceled
 	}
+	if failures.group != snapshot.Group || failures.current != snapshot.Current || failures.revision != snapshot.Revision {
+		*failures = stickyFailureState{group: snapshot.Group, current: snapshot.Current, revision: snapshot.Revision}
+	}
 	healthy, err := backend.Probe(ctx, snapshot, snapshot.Current)
+	if ctx.Err() != nil {
+		*failures = stickyFailureState{}
+		return stickyCanceled
+	}
 	if err != nil {
+		*failures = stickyFailureState{}
 		return stickyProbeError
 	}
 	if healthy {
+		*failures = stickyFailureState{}
 		return stickyCurrentHealthy
 	}
+	if failures.failures < stickyFailureThreshold {
+		failures.failures++
+	}
+	if failures.failures < stickyFailureThreshold {
+		return stickyFailurePending
+	}
+	outcome := scanStickyCandidates(ctx, backend, snapshot)
+	if outcome != stickyNoCandidate {
+		*failures = stickyFailureState{}
+	}
+	return outcome
+}
+
+func scanStickyCandidates(ctx context.Context, backend stickyBackend, snapshot stickySnapshot) stickyOutcome {
 	probeCtx, cancel := context.WithCancel(ctx)
 	type result struct {
 		name    string

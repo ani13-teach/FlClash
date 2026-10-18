@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -15,14 +17,16 @@ import (
 	"github.com/metacubex/mihomo/common/utils"
 	"github.com/metacubex/mihomo/constant"
 	cp "github.com/metacubex/mihomo/constant/provider"
+	"github.com/metacubex/mihomo/log"
 	"github.com/metacubex/mihomo/tunnel"
 )
 
 type stickyTestNode struct {
 	constant.Proxy
-	calls   atomic.Int32
-	healthy bool
-	onProbe func(context.Context)
+	calls       atomic.Int32
+	healthy     bool
+	onProbe     func(context.Context)
+	probeResult func(context.Context) (uint16, error)
 }
 
 func (p *stickyTestNode) Type() constant.AdapterType { return constant.Shadowsocks }
@@ -31,6 +35,9 @@ func (p *stickyTestNode) URLTest(ctx context.Context, _ string, _ utils.IntRange
 	p.calls.Add(1)
 	if p.onProbe != nil {
 		p.onProbe(ctx)
+	}
+	if p.probeResult != nil {
+		return p.probeResult(ctx)
 	}
 	if ctx.Err() != nil {
 		return 0, ctx.Err()
@@ -171,8 +178,22 @@ func TestStickyBackendDoesNotCacheUnavailableProbe(t *testing.T) {
 	for i := 0; i < cap(backend.slots); i++ {
 		backend.slots <- struct{}{}
 	}
-	if _, err := backend.Probe(backend.ctx, snapshot, "a"); err == nil {
-		t.Fatal("saturated probe should report unavailable")
+	subscriber := log.Subscribe()
+	defer log.UnSubscribe(subscriber)
+	started := time.Now()
+	if healthy, err := backend.Probe(backend.ctx, snapshot, "a"); healthy || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("saturated probe healthy = %v, err = %v", healthy, err)
+	}
+	if elapsed := time.Since(started); elapsed < 200*time.Millisecond || elapsed > time.Second {
+		t.Fatalf("queue wait = %v, want approximately 250ms", elapsed)
+	}
+	if node.calls.Load() != 0 {
+		t.Fatal("queue timeout must not call URLTest")
+	}
+	if drainLogStream(t, subscriber, 100*time.Millisecond, func(payload string) bool {
+		return strings.Contains(payload, "[Sticky] probe failed:")
+	}) {
+		t.Fatal("queue timeout was logged as a node failure")
 	}
 	<-backend.slots
 	if healthy, err := backend.Probe(backend.ctx, snapshot, "a"); err != nil || !healthy {
@@ -180,6 +201,266 @@ func TestStickyBackendDoesNotCacheUnavailableProbe(t *testing.T) {
 	}
 	if node.calls.Load() != 1 {
 		t.Fatalf("actual probes = %d, want 1", node.calls.Load())
+	}
+}
+
+func TestStickyBackendConfirmsFailuresWithFreshProbes(t *testing.T) {
+	for _, recovers := range []bool{false, true} {
+		t.Run(fmt.Sprintf("recovers=%t", recovers), func(t *testing.T) {
+			current := stickyNode("a")
+			current.healthy = false
+			group := stickyTestGroup(t, "[Sticky] test", current, stickyNode("b"))
+			backend := stickyTestBackend(t, map[string]constant.Proxy{group.Name(): group})
+			snapshot, _ := backend.Snapshot(group.Name())
+			var failures stickyFailureState
+			assertOutcome(t, stickyStep(backend.ctx, backend, snapshot, &failures), stickyFailurePending)
+			if groupNow(t, group) != "a" {
+				t.Fatal("first failure changed selection")
+			}
+			current.healthy = recovers
+			want := stickyCommitted
+			wantNode := "b"
+			if recovers {
+				want = stickyCurrentHealthy
+				wantNode = "a"
+			}
+			assertOutcome(t, stickyStep(backend.ctx, backend, snapshot, &failures), want)
+			if current.calls.Load() != 2 {
+				t.Fatalf("current probes = %d, want two independent requests", current.calls.Load())
+			}
+			if got := groupNow(t, group); got != wantNode {
+				t.Fatalf("selected %s, want %s", got, wantNode)
+			}
+		})
+	}
+}
+
+func TestStickyBackendRequestDeadlineExcludesQueueWait(t *testing.T) {
+	for _, queueWait := range []time.Duration{0, 120 * time.Millisecond} {
+		t.Run(queueWait.String(), func(t *testing.T) {
+			node := stickyNode("a")
+			var requestStarted, deadline time.Time
+			node.onProbe = func(ctx context.Context) {
+				requestStarted = time.Now()
+				var ok bool
+				deadline, ok = ctx.Deadline()
+				if !ok {
+					t.Error("URLTest context has no deadline")
+				}
+			}
+			group := stickyTestGroup(t, "[Sticky] test", node)
+			backend := stickyTestBackend(t, map[string]constant.Proxy{group.Name(): group})
+			snapshot, _ := backend.Snapshot(group.Name())
+			ctx, cancel := context.WithTimeout(backend.ctx, 20*time.Second)
+			defer cancel()
+			if queueWait > 0 {
+				for i := 0; i < cap(backend.slots); i++ {
+					backend.slots <- struct{}{}
+				}
+				timer := time.AfterFunc(queueWait, func() { <-backend.slots })
+				defer timer.Stop()
+			}
+			started := time.Now()
+			if healthy, err := backend.Probe(ctx, snapshot, "a"); err != nil || !healthy {
+				t.Fatalf("healthy = %v, err = %v", healthy, err)
+			}
+			if budget := deadline.Sub(requestStarted); budget < 5*time.Second-50*time.Millisecond || budget > 5*time.Second {
+				t.Fatalf("URLTest budget = %v, want a separate five-second deadline", budget)
+			}
+			if queueWait > 0 && requestStarted.Sub(started) < 100*time.Millisecond {
+				t.Fatal("URLTest did not wait for the occupied slot")
+			}
+		})
+	}
+}
+
+func TestStickyBackendSlowSuccessfulProbeStaysHealthy(t *testing.T) {
+	node := stickyNode("a")
+	node.onProbe = func(context.Context) { time.Sleep(2100 * time.Millisecond) }
+	group := stickyTestGroup(t, "[Sticky] test", node)
+	backend := stickyTestBackend(t, map[string]constant.Proxy{group.Name(): group})
+	snapshot, _ := backend.Snapshot(group.Name())
+	subscriber := log.Subscribe()
+	defer log.UnSubscribe(subscriber)
+	if healthy, err := backend.Probe(backend.ctx, snapshot, "a"); err != nil || !healthy {
+		t.Fatalf("2.1-second probe healthy = %v, err = %v", healthy, err)
+	}
+	if drainLogStream(t, subscriber, 100*time.Millisecond, func(payload string) bool {
+		return strings.Contains(payload, "[Sticky]")
+	}) {
+		t.Fatal("healthy probes must not publish Sticky log events")
+	}
+}
+
+func TestStickyBackendExpiredRequestWithNilURLTestErrorIsUnhealthy(t *testing.T) {
+	node := stickyNode("a")
+	node.probeResult = func(ctx context.Context) (uint16, error) {
+		<-ctx.Done()
+		return 42, nil
+	}
+	group := stickyTestGroup(t, "[Sticky] test", node)
+	backend := stickyTestBackend(t, map[string]constant.Proxy{group.Name(): group})
+	snapshot, _ := backend.Snapshot(group.Name())
+	ctx, cancel := context.WithTimeout(backend.ctx, 10*time.Second)
+	defer cancel()
+	subscriber := log.Subscribe()
+	defer log.UnSubscribe(subscriber)
+	if healthy, err := backend.Probe(ctx, snapshot, "a"); err != nil || healthy {
+		t.Fatalf("expired request healthy = %v, err = %v", healthy, err)
+	}
+	if ctx.Err() != nil {
+		t.Fatalf("parent context expired: %v", ctx.Err())
+	}
+	if !drainLogStream(t, subscriber, time.Second, func(payload string) bool {
+		return strings.Contains(payload, "[Sticky] probe failed:") &&
+			strings.Contains(payload, "delay=42 urltest_err=<nil> deadline_err=context deadline exceeded")
+	}) {
+		t.Fatal("request deadline failure was not logged with the actual nil URLTest error")
+	}
+}
+
+func TestStickyBackendLogsRealProbeFailure(t *testing.T) {
+	node := stickyNode("a")
+	node.probeResult = func(context.Context) (uint16, error) {
+		time.Sleep(30 * time.Millisecond)
+		return 7, errors.New("test URLTest failure")
+	}
+	group := stickyTestGroup(t, "[Sticky] test", node)
+	backend := stickyTestBackend(t, map[string]constant.Proxy{group.Name(): group})
+	snapshot, _ := backend.Snapshot(group.Name())
+	subscriber := log.Subscribe()
+	defer log.UnSubscribe(subscriber)
+	if healthy, err := backend.Probe(backend.ctx, snapshot, "a"); err != nil || healthy {
+		t.Fatalf("failed request healthy = %v, err = %v", healthy, err)
+	}
+	var payload string
+	if !drainLogStream(t, subscriber, time.Second, func(event string) bool {
+		if strings.Contains(event, "[Sticky] probe failed:") {
+			payload = event
+			return true
+		}
+		return false
+	}) {
+		t.Fatal("real probe failure was not logged")
+	}
+	for _, field := range []string{"node=\"a\"", "url=" + stickyURL, "delay=7", "urltest_err=test URLTest failure", "deadline_err=<nil>"} {
+		if !strings.Contains(payload, field) {
+			t.Errorf("log missing %q: %s", field, payload)
+		}
+	}
+	_, elapsedField, _ := strings.Cut(payload, "elapsed=")
+	elapsedText, _, _ := strings.Cut(elapsedField, " ")
+	elapsed, err := time.ParseDuration(elapsedText)
+	if err != nil || elapsed < 30*time.Millisecond {
+		t.Fatalf("logged elapsed = %q, parse error = %v; want full request duration", elapsedText, err)
+	}
+}
+
+func TestStickyBackendPreservesParentContextErrorsWithoutFailureLog(t *testing.T) {
+	for _, want := range []error{context.Canceled, context.DeadlineExceeded} {
+		for _, returnNil := range []bool{false, true} {
+			name := want.Error() + "/URLTest-error"
+			if returnNil {
+				name = want.Error() + "/URLTest-nil"
+			}
+			t.Run(name, func(t *testing.T) {
+				node := stickyNode("a")
+				group := stickyTestGroup(t, "[Sticky] test", node)
+				backend := stickyTestBackend(t, map[string]constant.Proxy{group.Name(): group})
+				snapshot, _ := backend.Snapshot(group.Name())
+				var ctx context.Context
+				var cancel context.CancelFunc
+				if want == context.Canceled {
+					ctx, cancel = context.WithCancel(backend.ctx)
+				} else {
+					ctx, cancel = context.WithTimeout(backend.ctx, 30*time.Millisecond)
+				}
+				defer cancel()
+				node.probeResult = func(probeCtx context.Context) (uint16, error) {
+					if want == context.Canceled {
+						cancel()
+					}
+					<-probeCtx.Done()
+					if returnNil {
+						return 10, nil
+					}
+					return 0, errors.New("URLTest interrupted")
+				}
+				subscriber := log.Subscribe()
+				defer log.UnSubscribe(subscriber)
+				if healthy, err := backend.Probe(ctx, snapshot, "a"); healthy || !errors.Is(err, want) {
+					t.Fatalf("healthy = %v, err = %v, want %v", healthy, err, want)
+				}
+				if drainLogStream(t, subscriber, 100*time.Millisecond, func(payload string) bool {
+					return strings.Contains(payload, "[Sticky] probe failed:")
+				}) {
+					t.Fatal("parent context cancellation was logged as a node failure")
+				}
+				if _, cached := backend.probes[node]; cached {
+					t.Fatal("parent context error must not be cached")
+				}
+			})
+		}
+	}
+}
+
+func TestStickyBackendQueueCancellationPreservesParentError(t *testing.T) {
+	node := stickyNode("a")
+	group := stickyTestGroup(t, "[Sticky] test", node)
+	backend := stickyTestBackend(t, map[string]constant.Proxy{group.Name(): group})
+	snapshot, _ := backend.Snapshot(group.Name())
+	for i := 0; i < cap(backend.slots); i++ {
+		backend.slots <- struct{}{}
+	}
+	ctx, cancel := context.WithCancel(backend.ctx)
+	defer cancel()
+	timer := time.AfterFunc(30*time.Millisecond, cancel)
+	defer timer.Stop()
+	subscriber := log.Subscribe()
+	defer log.UnSubscribe(subscriber)
+	if healthy, err := backend.Probe(ctx, snapshot, "a"); healthy || !errors.Is(err, context.Canceled) {
+		t.Fatalf("queued cancellation healthy = %v, err = %v", healthy, err)
+	}
+	if node.calls.Load() != 0 {
+		t.Fatal("canceled queued probe called URLTest")
+	}
+	if drainLogStream(t, subscriber, 100*time.Millisecond, func(payload string) bool {
+		return strings.Contains(payload, "[Sticky] probe failed:")
+	}) {
+		t.Fatal("queue cancellation was logged as a node failure")
+	}
+}
+
+func TestStickyBackendLogsOnlyCommittedSwitch(t *testing.T) {
+	group := stickyTestGroup(t, "[Sticky] test", stickyNode("a"), stickyNode("b"))
+	backend := stickyTestBackend(t, map[string]constant.Proxy{group.Name(): group})
+	snapshot, _ := backend.Snapshot(group.Name())
+	subscriber := log.Subscribe()
+	defer log.UnSubscribe(subscriber)
+	if backend.Commit(snapshot, "missing") {
+		t.Fatal("invalid candidate was committed")
+	}
+	if drainLogStream(t, subscriber, 100*time.Millisecond, func(payload string) bool {
+		return strings.Contains(payload, "[Sticky] switch:")
+	}) {
+		t.Fatal("rejected commit published a switch log")
+	}
+	if !backend.Commit(snapshot, "b") {
+		t.Fatal("valid candidate was not committed")
+	}
+	if !drainLogStream(t, subscriber, time.Second, func(payload string) bool {
+		return strings.Contains(payload, "[Sticky] switch: group=\"[Sticky] test\" \"a\" -> \"b\"")
+	}) {
+		t.Fatal("committed switch was not logged with the old and new selections")
+	}
+	snapshot, _ = backend.Snapshot(group.Name())
+	if !backend.Commit(snapshot, "b") {
+		t.Fatal("unchanged selection was rejected")
+	}
+	if drainLogStream(t, subscriber, 100*time.Millisecond, func(payload string) bool {
+		return strings.Contains(payload, "[Sticky] switch:")
+	}) {
+		t.Fatal("unchanged selection published a switch log")
 	}
 }
 

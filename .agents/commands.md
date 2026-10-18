@@ -1,5 +1,8 @@
 # Commands
 
+For a first checkout, read [../PROJECT.md](../PROJECT.md) for toolchains, Android configuration/signing, data locations,
+and troubleshooting. Current version sources and dependency forks are in [project.md](project.md).
+
 ## Building
 
 Update submodules first. The ClashMeta Go core lives in `core/Clash.Meta/`.
@@ -16,6 +19,24 @@ dart setup.dart linux
 dart setup.dart windows
 dart setup.dart android
 ```
+
+Run `flutter pub get` first. Desktop packaging requires the matching host OS; Android can be built on any supported
+host. `setup.dart` defaults to the current host platform and `--env pre`; inspect options without packaging:
+
+```bash
+dart setup.dart --help
+dart setup.dart android --arch arm64 --env dev
+dart setup.dart windows --targets zip --env dev
+```
+
+`--arch` is Android-only (`arm`, `arm64`, `amd64`); desktop architecture follows the host. Default targets are Android
+`apk`, Windows `exe,zip`, Linux `deb,appimage,rpm`, and macOS `dmg`. Packages go to `dist/`. The script rewrites local
+`env.json` and globally activates the pinned `flutter_distributor` fork; Linux may install apt dependencies/download
+AppImage tooling, and macOS may install `appdmg` globally. These are packaging commands, not read-only checks.
+
+For Android, `--env stable` does not configure signing. Without the complete existing release signing inputs, Gradle
+uses a debug signature and the `com.follow.clash.dev` application ID, including for release-mode APKs. Do not change
+signing or uninstall an existing app just to get a local package installed.
 
 The Go core and the Rust helper build automatically: Flutter runs
 `plugins/setup/hook/build.dart` on every `flutter build` and `flutter test`,
@@ -49,8 +70,8 @@ hooks:
       build_assets: true   # false does the same for the Rust library
 ```
 
-CI flips both to `false` with `yq` before `dart run tool/changelog.dart` and
-`flutter test`, and restores the file afterwards; no test loads either library.
+The ephemeral CI checkout flips both to `false` with `yq` before `dart run tool/changelog.dart` and
+`flutter test`; these tests do not load either library. Restore both to `true` after a local test loop.
 Never commit `false`: a build with it set stages whatever `libclash/` already
 holds and bundles no Rust library, which is why `setup.dart` refuses to package
 while it is set. Locally, `false` is worth setting for a Dart-only test loop,
@@ -170,10 +191,14 @@ The last command requires Windows for meaningful service coverage. Native Androi
 compile the modules they touch; use JDK 17 in this checkout:
 
 ```bash
+# Set JAVA_HOME to your local JDK 17 installation first.
 cd android
-JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home ./gradlew :service:compileDebugKotlin
-JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home ./gradlew :app:compileDebugKotlin
+./gradlew :service:compileDebugKotlin
+./gradlew :app:compileDebugKotlin
 ```
+
+On Windows use `gradlew.bat`. A fresh checkout may need `flutter precache` and an initial Flutter Android build to
+prepare the local Gradle wrapper/SDK configuration and Core artifacts before standalone native commands can run.
 
 Always-on VPN entry, system VPN revoke, actual permission UI, and rapid device start/stop still require Android device or
 emulator validation; Kotlin compilation cannot prove those system callbacks.
