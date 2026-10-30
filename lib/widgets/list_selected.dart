@@ -150,6 +150,7 @@ class SelectedDecorationListItem extends StatelessWidget {
   final VoidCallback onPressed;
   final double? horizontalTitleGap;
   final Widget? leading;
+  final Widget? trailing;
   final bool invalid;
   final double? minVerticalPadding;
 
@@ -165,6 +166,7 @@ class SelectedDecorationListItem extends StatelessWidget {
     this.minVerticalPadding,
     this.subtitle,
     this.leading,
+    this.trailing,
   });
 
   @override
@@ -185,12 +187,18 @@ class SelectedDecorationListItem extends StatelessWidget {
         onPressed();
       },
       subtitle: subtitle,
-      trailing: CommonCheckBox(
-        value: isSelected,
-        isCircle: true,
-        onChanged: (_) {
-          onSelected();
-        },
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ?trailing,
+          CommonCheckBox(
+            value: isSelected,
+            isCircle: true,
+            onChanged: (_) {
+              onSelected();
+            },
+          ),
+        ],
       ),
     );
   }

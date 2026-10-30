@@ -1,8 +1,12 @@
+import 'dart:convert';
+
+import 'package:fl_clash/common/added_rules.dart';
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/features/features.dart';
 import 'package:fl_clash/models/clash_config.dart';
 import 'package:fl_clash/providers/providers.dart';
+import 'package:fl_clash/state.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,6 +20,59 @@ class AddedRulesView extends ConsumerStatefulWidget {
 
 class _AddedRulesViewState extends ConsumerState<AddedRulesView> {
   final _key = uniqueId;
+  bool _transferring = false;
+
+  Future<void> _handleImport() async {
+    if (_transferring) return;
+    final appLocalizations = context.appLocalizations;
+    setState(() => _transferring = true);
+    try {
+      final count = await globalState.safeRun<int?>(() async {
+        final file = await picker.pickerFile();
+        if (file == null || !mounted) return null;
+        final rules = decodeAddedRules(utf8.decode(await file.readBytes()));
+        if (!mounted) return null;
+        return importAddedRules(rules);
+      });
+      if (count != null && mounted) {
+        context.showNotifier(
+          '${appLocalizations.import}: ${appLocalizations.rulesCount(count)}',
+          level: MessageLevel.success,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _transferring = false);
+    }
+  }
+
+  Future<void> _handleExport() async {
+    if (_transferring) return;
+    final appLocalizations = context.appLocalizations;
+    final selected = Set<int>.from(ref.read(itemsProvider(_key)));
+    setState(() => _transferring = true);
+    try {
+      final saved = await globalState.safeRun<bool>(() async {
+        final rules = await ref.read(globalRulesProvider.future);
+        final exported = rules.where(
+          (rule) => selected.isEmpty || selected.contains(rule.id),
+        );
+        if (exported.isEmpty || !mounted) return false;
+        final uri = await picker.saveFile(
+          'additional_rules.yaml',
+          encodeAddedRules(exported),
+        );
+        return uri != null;
+      });
+      if (saved == true && mounted) {
+        context.showNotifier(
+          appLocalizations.exportSuccess,
+          level: MessageLevel.success,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _transferring = false);
+    }
+  }
 
   Future<void> _handleAddOrUpdate([Rule? rule]) async {
     final res = await dialogs.showCommonDialog<Rule>(
@@ -78,6 +135,22 @@ class _AddedRulesViewState extends ConsumerState<AddedRulesView> {
       child: BaseScaffold(
         title: appLocalizations.addedRules,
         actions: [
+          if (selectedRules.isEmpty)
+            CommonMinIconButtonTheme(
+              child: IconButton.filledTonal(
+                tooltip: appLocalizations.importFile,
+                onPressed: _transferring ? null : _handleImport,
+                icon: const Icon(Icons.file_open_outlined),
+              ),
+            ),
+          CommonMinIconButtonTheme(
+            child: IconButton.filledTonal(
+              tooltip: appLocalizations.exportFile,
+              onPressed: _transferring || rules.isEmpty ? null : _handleExport,
+              icon: const Icon(Icons.save_alt),
+            ),
+          ),
+          const SizedBox(width: 2),
           if (selectedRules.isNotEmpty) ...[
             CommonMinIconButtonTheme(
               child: IconButton.filledTonal(

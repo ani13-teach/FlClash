@@ -1,8 +1,7 @@
-import 'dart:async';
-
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/core/controller.dart';
 import 'package:fl_clash/core/method.dart';
+import 'package:fl_clash/features/connection/connection_history.dart';
 import 'package:fl_clash/features/features.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/providers.dart';
@@ -23,6 +22,7 @@ class _ConnectionsViewState extends ConsumerState<ConnectionsView>
     with WidgetsBindingObserver, ActivePollingMixin<ConnectionsView> {
   CoreController get _core => ref.read(coreHandlerProvider);
 
+  final _history = ConnectionHistory();
   final _listController = TrackerInfoListController();
   final ScrollController _scrollController = ScrollController();
 
@@ -34,7 +34,7 @@ class _ConnectionsViewState extends ConsumerState<ConnectionsView>
       IconButton(
         tooltip: context.appLocalizations.closeConnections,
         onPressed: () async {
-          unawaited(_core.closeConnections());
+          await _core.closeConnections();
           await _refreshConnections();
         },
         icon: const Icon(Icons.delete_sweep_outlined),
@@ -75,20 +75,11 @@ class _ConnectionsViewState extends ConsumerState<ConnectionsView>
   }
 
   void _applyConnections(List<TrackerInfo> trackerInfos) {
-    // The core snapshot iterates a Go map, so its order is random per poll;
-    // sort by total traffic to keep the list stable between refreshes.
-    final sorted = List.of(trackerInfos)
-      ..sort((a, b) {
-        final traffic = (b.upload + b.download).compareTo(
-          a.upload + a.download,
-        );
-        if (traffic != 0) {
-          return traffic;
-        }
-        final start = b.start.compareTo(a.start);
-        return start != 0 ? start : a.id.compareTo(b.id);
-      });
-    _listController.setTrackerInfos(sorted);
+    setState(() {
+      _listController.setTrackerInfos(
+        _history.update(trackerInfos, DateTime.now()),
+      );
+    });
   }
 
   Future<void> _handleBlockConnection(String id) async {
@@ -131,9 +122,9 @@ class _ConnectionsViewState extends ConsumerState<ConnectionsView>
                 tooltip: appLocalizations.blockConnection,
                 visualDensity: VisualDensity.compact,
                 icon: const Icon(Icons.block, size: 20),
-                onPressed: () {
-                  _handleBlockConnection(trackerInfo.id);
-                },
+                onPressed: _history.isActive(trackerInfo.id)
+                    ? () => _handleBlockConnection(trackerInfo.id)
+                    : null,
               ),
             ),
           );

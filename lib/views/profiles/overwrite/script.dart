@@ -54,6 +54,7 @@ class ScriptContent extends ConsumerWidget {
                   for (final script in scripts)
                     _ScriptOption(
                       label: script.label,
+                      trailing: ScriptExportButton(script: script),
                       value: script.id,
                       isSelected: script.id == scriptId,
                       onSelected: () {
@@ -81,12 +82,14 @@ class ScriptContent extends ConsumerWidget {
 class _ScriptOption extends StatelessWidget {
   const _ScriptOption({
     required this.label,
+    required this.trailing,
     required this.value,
     required this.isSelected,
     required this.onSelected,
   });
 
   final String label;
+  final Widget trailing;
   final int value;
   final bool isSelected;
   final VoidCallback onSelected;
@@ -110,6 +113,7 @@ class _ScriptOption extends StatelessWidget {
         ),
       ),
       title: Text(label),
+      trailing: trailing,
       onPressed: onSelected,
     );
   }

@@ -1,7 +1,9 @@
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/core/controller.dart';
 import 'package:fl_clash/core/interface.dart';
+import 'package:fl_clash/features/features.dart';
 import 'package:fl_clash/models/models.dart';
+import 'package:fl_clash/providers/core.dart';
 import 'package:fl_clash/providers/database.dart';
 import 'package:fl_clash/state.dart';
 import 'package:fl_clash/views/connection/connections.dart';
@@ -49,18 +51,13 @@ void main() {
   late MockCoreHandlerInterface core;
   late ProviderContainer container;
 
-  setUpAll(() {
-    core = MockCoreHandlerInterface();
-    CoreController.resetInstance();
-    CoreController.test(core);
-  });
-
-  tearDownAll(CoreController.resetInstance);
-
   setUp(() {
-    reset(core);
+    core = MockCoreHandlerInterface();
     container = ProviderContainer(
-      overrides: [profilesProvider.overrideWith(TestProfiles.new)],
+      overrides: [
+        profilesProvider.overrideWith(TestProfiles.new),
+        coreHandlerProvider.overrideWithValue(CoreController.scoped(core)),
+      ],
     );
     globalState.container = container;
   });
@@ -121,7 +118,7 @@ void main() {
     await teardownView(tester);
   });
 
-  testWidgets('orders rows by total traffic, then newest first', (
+  testWidgets('orders rows by newest start regardless of traffic', (
     tester,
   ) async {
     when(core.getConnections).thenAnswer(
@@ -141,8 +138,98 @@ void main() {
 
     double topOf(String host) =>
         tester.getTopLeft(find.textContaining(host).first).dy;
-    expect(topOf('beta.test'), lessThan(topOf('gamma.test')));
     expect(topOf('gamma.test'), lessThan(topOf('alpha.test')));
+    expect(topOf('alpha.test'), lessThan(topOf('beta.test')));
+    expect(tester.takeException(), null);
+
+    await teardownView(tester);
+  });
+
+  IconButton blockButton(WidgetTester tester, String id) {
+    final row = tester.widget<TrackerInfoItem>(find.byKey(Key(id)));
+    return row.trailing! as IconButton;
+  }
+
+  testWidgets('keeps ended rows and disables their block buttons', (
+    tester,
+  ) async {
+    var connections = [
+      _tracker(id: 'a', host: 'alpha.test'),
+      _tracker(id: 'b', host: 'beta.test'),
+    ];
+    when(core.getConnections).thenAnswer((_) async => connections);
+    await pumpConnections(tester);
+
+    expect(blockButton(tester, 'a').onPressed, isNotNull);
+    connections = [connections.last];
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+
+    expect(find.textContaining('alpha.test'), findsWidgets);
+    expect(blockButton(tester, 'a').onPressed, isNull);
+    expect(blockButton(tester, 'b').onPressed, isNotNull);
+    expect(tester.takeException(), null);
+
+    await teardownView(tester);
+  });
+
+  testWidgets('closing one connection preserves its displayed record', (
+    tester,
+  ) async {
+    var connections = [_tracker(id: 'a', host: 'alpha.test')];
+    when(core.getConnections).thenAnswer((_) async => connections);
+    when(() => core.closeConnection('a')).thenAnswer((_) async {
+      connections = [];
+      return true;
+    });
+    await pumpConnections(tester);
+
+    await tester.tap(find.byIcon(Icons.block));
+    await tester.pump();
+    await tester.pump(commonDuration);
+
+    verify(() => core.closeConnection('a')).called(1);
+    expect(find.textContaining('alpha.test'), findsWidgets);
+    expect(blockButton(tester, 'a').onPressed, isNull);
+    expect(tester.takeException(), null);
+
+    await teardownView(tester);
+  });
+
+  testWidgets('closing all connections preserves their displayed records', (
+    tester,
+  ) async {
+    var connections = [_tracker(id: 'a', host: 'alpha.test')];
+    when(core.getConnections).thenAnswer((_) async => connections);
+    when(core.closeConnections).thenAnswer((_) async {
+      connections = [];
+      return true;
+    });
+    await pumpConnections(tester);
+
+    await tester.tap(find.byIcon(Icons.delete_sweep_outlined));
+    await tester.pump();
+    await tester.pump(commonDuration);
+
+    verify(core.closeConnections).called(1);
+    expect(find.textContaining('alpha.test'), findsWidgets);
+    expect(blockButton(tester, 'a').onPressed, isNull);
+    expect(tester.takeException(), null);
+
+    await teardownView(tester);
+  });
+
+  testWidgets('keeps existing records when a later poll fails', (tester) async {
+    when(
+      core.getConnections,
+    ).thenAnswer((_) async => [_tracker(id: 'a', host: 'alpha.test')]);
+    await pumpConnections(tester);
+    when(core.getConnections).thenThrow(StateError('core down'));
+
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+
+    expect(find.textContaining('alpha.test'), findsWidgets);
     expect(tester.takeException(), null);
 
     await teardownView(tester);

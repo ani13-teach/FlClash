@@ -77,6 +77,9 @@ class _ScriptsViewState extends ConsumerState<ScriptsView> {
             child: SelectedDecorationListItem(
               isSelected: selectedScriptIds.contains(script.id),
               isEditing: selectedScriptIds.isNotEmpty,
+              trailing: selectedScriptIds.isEmpty
+                  ? ScriptExportButton(script: script)
+                  : null,
               title: Text(
                 script.label,
                 style: context.textTheme.bodyLarge,
