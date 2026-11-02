@@ -14,6 +14,7 @@ type stickySnapshot struct {
 }
 
 type stickyBackend interface {
+	FailureThreshold() int
 	Snapshot(group string) (stickySnapshot, bool)
 	Probe(ctx context.Context, snapshot stickySnapshot, name string) (bool, error)
 	Commit(snapshot stickySnapshot, candidate string) bool
@@ -83,10 +84,11 @@ func stickyStep(ctx context.Context, backend stickyBackend, snapshot stickySnaps
 		*failures = stickyFailureState{}
 		return stickyCurrentHealthy
 	}
-	if failures.failures < stickyFailureThreshold {
+	threshold := backend.FailureThreshold()
+	if failures.failures < threshold {
 		failures.failures++
 	}
-	if failures.failures < stickyFailureThreshold {
+	if failures.failures < threshold {
 		return stickyFailurePending
 	}
 	outcome := scanStickyCandidates(ctx, backend, snapshot)

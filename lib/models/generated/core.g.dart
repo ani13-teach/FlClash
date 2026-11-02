@@ -9,12 +9,21 @@ part of '../core.dart';
 _SetupParams _$SetupParamsFromJson(Map<String, dynamic> json) => _SetupParams(
   selectedMap: Map<String, String>.from(json['selected-map'] as Map),
   testUrl: json['test-url'] as String,
+  stickyTestUrl: json['sticky-test-url'] as String? ?? defaultStickyTestUrl,
+  stickyTimeout:
+      (json['sticky-timeout'] as num?)?.toInt() ?? defaultStickyTimeout,
+  stickyFailureThreshold:
+      (json['sticky-failure-threshold'] as num?)?.toInt() ??
+      defaultStickyFailureThreshold,
 );
 
 Map<String, dynamic> _$SetupParamsToJson(_SetupParams instance) =>
     <String, dynamic>{
       'selected-map': instance.selectedMap,
       'test-url': instance.testUrl,
+      'sticky-test-url': instance.stickyTestUrl,
+      'sticky-timeout': instance.stickyTimeout,
+      'sticky-failure-threshold': instance.stickyFailureThreshold,
     };
 
 _UpdateParams _$UpdateParamsFromJson(Map<String, dynamic> json) =>
@@ -42,6 +51,12 @@ _UpdateParams _$UpdateParamsFromJson(Map<String, dynamic> json) =>
           const [],
       geoAutoUpdate: json['geo-auto-update'] as bool? ?? false,
       geoUpdateInterval: (json['geo-update-interval'] as num?)?.toInt() ?? 24,
+      stickyTestUrl: json['sticky-test-url'] as String? ?? defaultStickyTestUrl,
+      stickyTimeout:
+          (json['sticky-timeout'] as num?)?.toInt() ?? defaultStickyTimeout,
+      stickyFailureThreshold:
+          (json['sticky-failure-threshold'] as num?)?.toInt() ??
+          defaultStickyFailureThreshold,
     );
 
 Map<String, dynamic> _$UpdateParamsToJson(_UpdateParams instance) =>
@@ -60,6 +75,9 @@ Map<String, dynamic> _$UpdateParamsToJson(_UpdateParams instance) =>
       'authentication': instance.authentication,
       'geo-auto-update': instance.geoAutoUpdate,
       'geo-update-interval': instance.geoUpdateInterval,
+      'sticky-test-url': instance.stickyTestUrl,
+      'sticky-timeout': instance.stickyTimeout,
+      'sticky-failure-threshold': instance.stickyFailureThreshold,
     };
 
 const _$FindProcessModeEnumMap = {

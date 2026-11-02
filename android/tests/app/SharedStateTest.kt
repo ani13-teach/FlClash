@@ -26,6 +26,28 @@ class SharedStateTest {
     }
 
     @Test
+    fun `sticky settings survive the Android restart round trip`() {
+        val json = """{"test-url":"https://manual.example/204","selected-map":{},"sticky-test-url":"https://health.example/204","sticky-timeout":12,"sticky-failure-threshold":7}"""
+        val params = gson.fromJson(json, SetupParams::class.java)
+
+        assertEquals("https://health.example/204", params.stickyTestUrl)
+        assertEquals(12, params.stickyTimeout)
+        assertEquals(7, params.stickyFailureThreshold)
+        val encoded = gson.toJson(params)
+        assertTrue(encoded.contains("\"sticky-test-url\""))
+        assertTrue(encoded.contains("\"sticky-timeout\""))
+        assertEquals(params, gson.fromJson(encoded, SetupParams::class.java))
+    }
+
+    @Test
+    fun `legacy setup leaves Sticky settings absent for Core defaults`() {
+        val params = gson.fromJson("""{"test-url":"https://example.test","selected-map":{}}""", SetupParams::class.java)
+        assertNull(params.stickyTestUrl)
+        assertNull(params.stickyTimeout)
+        assertNull(params.stickyFailureThreshold)
+    }
+
+    @Test
     fun `setup params serialize back to the same spelling`() {
         val encoded = gson.toJson(
             SetupParams(testUrl = "https://example.test", selectedMap = emptyMap()),

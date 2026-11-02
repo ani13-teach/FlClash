@@ -912,6 +912,18 @@ class MessageLookup extends MessageLookupByLibrary {
     "startVpn": MessageLookupByLibrary.simpleMessage("VPNを起動しています..."),
     "status": MessageLookupByLibrary.simpleMessage("状態"),
     "statusDesc": MessageLookupByLibrary.simpleMessage("無効にすると、システムDNSを使用します"),
+    "stickyFailover": MessageLookupByLibrary.simpleMessage("スティッキーフェイルオーバー"),
+    "stickyFailureThreshold": MessageLookupByLibrary.simpleMessage(
+      "切り替えまでの連続失敗回数",
+    ),
+    "stickyFailureThresholdRange": MessageLookupByLibrary.simpleMessage(
+      "1～10 の整数を入力してください",
+    ),
+    "stickyTestUrl": MessageLookupByLibrary.simpleMessage("障害検知 URL"),
+    "stickyTimeout": MessageLookupByLibrary.simpleMessage("障害検知のタイムアウト"),
+    "stickyTimeoutRange": MessageLookupByLibrary.simpleMessage(
+      "1～60 秒の整数を入力してください",
+    ),
     "stop": MessageLookupByLibrary.simpleMessage("停止"),
     "stopVpn": MessageLookupByLibrary.simpleMessage("VPNを停止しています..."),
     "style": MessageLookupByLibrary.simpleMessage("スタイル"),

@@ -1,4 +1,10 @@
 {
+  "stickyFailureThreshold": "切り替えまでの連続失敗回数",
+  "stickyFailureThresholdRange": "1～10 の整数を入力してください",
+  "stickyFailover": "スティッキーフェイルオーバー",
+  "stickyTimeout": "障害検知のタイムアウト",
+  "stickyTestUrl": "障害検知 URL",
+  "stickyTimeoutRange": "1～60 秒の整数を入力してください",
   "rule": "ルール",
   "rules": "ルール",
   "global": "グローバル",

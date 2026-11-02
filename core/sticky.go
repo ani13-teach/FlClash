@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -29,6 +30,7 @@ const (
 )
 
 var (
+	stickySettings       = normalizeStickySettings("", 0, 0)
 	stickyRun            *mihomoStickyBackend
 	stickyScope          string
 	stickyPath           string
@@ -37,6 +39,49 @@ var (
 	stickyPending        map[string]string
 	errStickyUnavailable = errors.New("sticky probe unavailable")
 )
+
+type stickyProbeSettings struct {
+	URL              string
+	Timeout          time.Duration
+	FailureThreshold int
+}
+
+func normalizeStickySettings(rawURL string, seconds, threshold int) stickyProbeSettings {
+	settings := stickyProbeSettings{URL: stickyURL, Timeout: stickyTimeout, FailureThreshold: stickyFailureThreshold}
+	trimmed := strings.TrimSpace(rawURL)
+	if parsed, err := url.ParseRequestURI(trimmed); err == nil &&
+		(parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Hostname() != "" && parsed.User == nil {
+		settings.URL = trimmed
+	}
+	if seconds >= 1 && seconds <= 60 {
+		settings.Timeout = time.Duration(seconds) * time.Second
+	}
+	if threshold >= 1 && threshold <= 10 {
+		settings.FailureThreshold = threshold
+	}
+	return settings
+}
+
+func syncStickySettings(rawURL *string, seconds, threshold *int) {
+	nextURL := stickySettings.URL
+	nextTimeout := int(stickySettings.Timeout / time.Second)
+	if rawURL != nil {
+		nextURL = *rawURL
+	}
+	if seconds != nil {
+		nextTimeout = *seconds
+	}
+	nextThreshold := stickySettings.FailureThreshold
+	if threshold != nil {
+		nextThreshold = *threshold
+	}
+	candidate := normalizeStickySettings(nextURL, nextTimeout, nextThreshold)
+	if candidate == stickySettings {
+		return
+	}
+	stickySettings = candidate
+	reconcileSticky()
+}
 
 type stickyView struct {
 	proxy    constant.Proxy
@@ -53,12 +98,13 @@ type stickyProbe struct {
 }
 
 type mihomoStickyBackend struct {
-	ctx     context.Context
-	cancel  context.CancelFunc
-	views   map[string]stickyView
-	probeMu sync.Mutex
-	probes  map[constant.Proxy]*stickyProbe
-	slots   chan struct{}
+	settings stickyProbeSettings
+	ctx      context.Context
+	cancel   context.CancelFunc
+	views    map[string]stickyView
+	probeMu  sync.Mutex
+	probes   map[constant.Proxy]*stickyProbe
+	slots    chan struct{}
 }
 
 func isStickyName(name string) bool {
@@ -167,7 +213,8 @@ func reconcileSticky() {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	backend := &mihomoStickyBackend{
-		ctx: ctx, cancel: cancel,
+		settings: stickySettings,
+		ctx:      ctx, cancel: cancel,
 		views:  make(map[string]stickyView),
 		probes: make(map[constant.Proxy]*stickyProbe),
 		slots:  make(chan struct{}, 16),
@@ -216,6 +263,10 @@ func (b *mihomoStickyBackend) snapshotLocked(group string) (stickySnapshot, bool
 		b.views[group] = previous
 	}
 	return stickySnapshot{Group: group, Current: current, Members: names, Revision: previous.revision}, currentSupported
+}
+
+func (b *mihomoStickyBackend) FailureThreshold() int {
+	return b.settings.FailureThreshold
 }
 
 func (b *mihomoStickyBackend) Snapshot(group string) (stickySnapshot, bool) {
@@ -298,10 +349,10 @@ func (b *mihomoStickyBackend) probeNode(ctx context.Context, proxy constant.Prox
 	case <-queueCtx.Done():
 		return false, queueCtx.Err()
 	}
-	probeCtx, cancel := context.WithTimeout(ctx, stickyTimeout)
+	probeCtx, cancel := context.WithTimeout(ctx, b.settings.Timeout)
 	defer cancel()
 	started := time.Now()
-	delay, err := proxy.URLTest(probeCtx, stickyURL, anyDelayTestStatus)
+	delay, err := proxy.URLTest(probeCtx, b.settings.URL, anyDelayTestStatus)
 	elapsed := time.Since(started)
 	if ctx.Err() != nil {
 		return false, ctx.Err()
@@ -310,7 +361,7 @@ func (b *mihomoStickyBackend) probeNode(ctx context.Context, proxy constant.Prox
 	healthy := err == nil && deadlineErr == nil
 	if !healthy {
 		log.Warnln("[Sticky] probe failed: node=%q url=%s elapsed=%s delay=%d urltest_err=%v deadline_err=%v",
-			proxy.Name(), stickyURL, elapsed, delay, err, deadlineErr)
+			proxy.Name(), b.settings.URL, elapsed, delay, err, deadlineErr)
 	}
 	return healthy, nil
 }

@@ -29,6 +29,43 @@ void main() {
     container.dispose();
   });
 
+  test('Sticky settings reach hot updates and Android restart state', () async {
+    await AppLocalizations.load(const Locale('en'));
+    container.listen(updateParamsProvider, (_, _) {});
+    container.listen(sharedStateProvider, (_, _) {});
+    expect(container.read(updateParamsProvider).stickyTimeout, 5);
+    expect(
+      container.read(sharedStateProvider).setupParams?.stickyTestUrl,
+      defaultStickyTestUrl,
+    );
+
+    container
+        .read(appSettingProvider.notifier)
+        .update(
+          (state) => state.copyWith(
+            stickyTestUrl: 'https://health.example/204',
+            stickyTimeout: 12,
+            stickyFailureThreshold: 7,
+          ),
+        );
+    final update = container.read(updateParamsProvider);
+    final setup = container.read(sharedStateProvider).setupParams!;
+    expect(update.stickyTestUrl, 'https://health.example/204');
+    expect(update.stickyTimeout, 12);
+    expect(update.stickyFailureThreshold, 7);
+    expect(setup.stickyFailureThreshold, 7);
+    expect(update.toJson(), containsPair('sticky-failure-threshold', 7));
+    expect(
+      update.toJson(),
+      containsPair('sticky-test-url', setup.stickyTestUrl),
+    );
+    expect(
+      update.toJson(),
+      containsPair('sticky-timeout', setup.stickyTimeout),
+    );
+    expect(setup.testUrl, defaultTestUrl);
+  });
+
   test('group derivation sanitizes runtime state and respects clash mode', () {
     final groups = [
       const Group(

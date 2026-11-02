@@ -2,6 +2,15 @@ part of '../state.dart';
 
 @riverpod
 UpdateParams updateParams(Ref ref) {
+  final sticky = ref.watch(
+    appSettingProvider.select(
+      (state) => (
+        url: state.stickyTestUrl,
+        timeout: state.stickyTimeout,
+        failureThreshold: state.stickyFailureThreshold,
+      ),
+    ),
+  );
   final routeMode = ref.watch(
     networkSettingProvider.select((state) => state.routeMode),
   );
@@ -24,6 +33,9 @@ UpdateParams updateParams(Ref ref) {
         mixedPort: state.mixedPort,
         geoAutoUpdate: state.geoAutoUpdate,
         geoUpdateInterval: state.geoUpdateInterval,
+        stickyTestUrl: sticky.url,
+        stickyTimeout: sticky.timeout,
+        stickyFailureThreshold: sticky.failureThreshold,
       ),
     ),
   );
@@ -161,6 +173,9 @@ SharedState sharedState(Ref ref) {
         showStopAction: state.showNotificationStopAction,
         crashlytics: state.crashlytics,
         testUrl: state.testUrl,
+        stickyTestUrl: state.stickyTestUrl,
+        stickyTimeout: state.stickyTimeout,
+        stickyFailureThreshold: state.stickyFailureThreshold,
       ),
     ),
   );
@@ -198,7 +213,13 @@ SharedState sharedState(Ref ref) {
     crashlytics: crashlytics,
     stopTip: currentAppLocalizations.stopVpn,
     startTip: currentAppLocalizations.startVpn,
-    setupParams: SetupParams(selectedMap: selectedMap, testUrl: testUrl),
+    setupParams: SetupParams(
+      selectedMap: selectedMap,
+      testUrl: testUrl,
+      stickyTestUrl: appSetting.stickyTestUrl,
+      stickyTimeout: appSetting.stickyTimeout,
+      stickyFailureThreshold: appSetting.stickyFailureThreshold,
+    ),
     vpnOptions: VpnOptions(
       enable: vpnSetting.enable,
       stack: stack,

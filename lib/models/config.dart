@@ -61,6 +61,31 @@ List<DashboardWidget> dashboardWidgetsSafeFormJson(
   );
 }
 
+bool isValidStickyTestUrl(String value) {
+  final uri = Uri.tryParse(value);
+  return uri != null &&
+      (uri.scheme == 'http' || uri.scheme == 'https') &&
+      uri.host.isNotEmpty &&
+      uri.userInfo.isEmpty;
+}
+
+String stickyTestUrlFromJson(Object? value) {
+  final url = value is String ? value.trim() : '';
+  return isValidStickyTestUrl(url) ? url : defaultStickyTestUrl;
+}
+
+int stickyTimeoutFromJson(Object? value) {
+  return value is int && value >= 1 && value <= maxStickyTimeout
+      ? value
+      : defaultStickyTimeout;
+}
+
+int stickyFailureThresholdFromJson(Object? value) {
+  return value is int && value >= 1 && value <= maxStickyFailureThreshold
+      ? value
+      : defaultStickyFailureThreshold;
+}
+
 @freezed
 abstract class AppSettingProps with _$AppSettingProps {
   const factory AppSettingProps({
@@ -76,6 +101,15 @@ abstract class AppSettingProps with _$AppSettingProps {
     @Default(false) bool openLogs,
     @Default(true) bool closeConnections,
     @Default(defaultTestUrl) String testUrl,
+    @Default(defaultStickyTestUrl)
+    @JsonKey(fromJson: stickyTestUrlFromJson)
+    String stickyTestUrl,
+    @Default(defaultStickyTimeout)
+    @JsonKey(fromJson: stickyTimeoutFromJson)
+    int stickyTimeout,
+    @Default(defaultStickyFailureThreshold)
+    @JsonKey(fromJson: stickyFailureThresholdFromJson)
+    int stickyFailureThreshold,
     @Default(true) bool isAnimateToPage,
     @Default(true) bool autoCheckUpdate,
     @Default(false) bool showLabel,

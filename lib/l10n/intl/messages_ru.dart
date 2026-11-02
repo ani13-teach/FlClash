@@ -1139,6 +1139,22 @@ class MessageLookup extends MessageLookupByLibrary {
     "statusDesc": MessageLookupByLibrary.simpleMessage(
       "При отключении используется системный DNS",
     ),
+    "stickyFailover": MessageLookupByLibrary.simpleMessage(
+      "Липкое переключение при сбое",
+    ),
+    "stickyFailureThreshold": MessageLookupByLibrary.simpleMessage(
+      "Число последовательных сбоев",
+    ),
+    "stickyFailureThresholdRange": MessageLookupByLibrary.simpleMessage(
+      "Введите целое число от 1 до 10",
+    ),
+    "stickyTestUrl": MessageLookupByLibrary.simpleMessage("URL проверки сбоя"),
+    "stickyTimeout": MessageLookupByLibrary.simpleMessage(
+      "Тайм-аут проверки сбоя",
+    ),
+    "stickyTimeoutRange": MessageLookupByLibrary.simpleMessage(
+      "Введите целое число от 1 до 60 секунд",
+    ),
     "stop": MessageLookupByLibrary.simpleMessage("Стоп"),
     "stopVpn": MessageLookupByLibrary.simpleMessage("Остановка VPN..."),
     "style": MessageLookupByLibrary.simpleMessage("Стиль"),

@@ -21,6 +21,15 @@ _AppSettingProps _$AppSettingPropsFromJson(Map<String, dynamic> json) =>
       openLogs: json['openLogs'] as bool? ?? false,
       closeConnections: json['closeConnections'] as bool? ?? true,
       testUrl: json['testUrl'] as String? ?? defaultTestUrl,
+      stickyTestUrl: json['stickyTestUrl'] == null
+          ? defaultStickyTestUrl
+          : stickyTestUrlFromJson(json['stickyTestUrl']),
+      stickyTimeout: json['stickyTimeout'] == null
+          ? defaultStickyTimeout
+          : stickyTimeoutFromJson(json['stickyTimeout']),
+      stickyFailureThreshold: json['stickyFailureThreshold'] == null
+          ? defaultStickyFailureThreshold
+          : stickyFailureThresholdFromJson(json['stickyFailureThreshold']),
       isAnimateToPage: json['isAnimateToPage'] as bool? ?? true,
       autoCheckUpdate: json['autoCheckUpdate'] as bool? ?? true,
       showLabel: json['showLabel'] as bool? ?? false,
@@ -55,6 +64,9 @@ Map<String, dynamic> _$AppSettingPropsToJson(_AppSettingProps instance) =>
       'openLogs': instance.openLogs,
       'closeConnections': instance.closeConnections,
       'testUrl': instance.testUrl,
+      'stickyTestUrl': instance.stickyTestUrl,
+      'stickyTimeout': instance.stickyTimeout,
+      'stickyFailureThreshold': instance.stickyFailureThreshold,
       'isAnimateToPage': instance.isAnimateToPage,
       'autoCheckUpdate': instance.autoCheckUpdate,
       'showLabel': instance.showLabel,

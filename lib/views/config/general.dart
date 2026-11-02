@@ -149,6 +149,109 @@ class TestUrlItem extends ConsumerWidget {
   }
 }
 
+class StickyTimeoutItem extends ConsumerWidget {
+  const StickyTimeoutItem({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l = context.appLocalizations;
+    final timeout = ref.watch(
+      appSettingProvider.select((state) => state.stickyTimeout),
+    );
+    return ListItem.input(
+      leading: const Icon(Icons.timer_outlined),
+      title: Text(l.stickyTimeout),
+      subtitle: Text(l.secondsCount(timeout)),
+      dialogTitle: l.stickyTimeout,
+      suffixText: l.seconds,
+      resetValue: '$defaultStickyTimeout',
+      value: '$timeout',
+      maxLength: TextInputLimits.interval,
+      keyboardType: TextInputType.number,
+      validator: (value) {
+        final seconds = int.tryParse(value ?? '');
+        return seconds != null && seconds >= 1 && seconds <= maxStickyTimeout
+            ? null
+            : l.stickyTimeoutRange;
+      },
+      onChanged: (value) {
+        if (value == null) return;
+        ref
+            .read(appSettingProvider.notifier)
+            .update((state) => state.copyWith(stickyTimeout: int.parse(value)));
+      },
+    );
+  }
+}
+
+class StickyFailureThresholdItem extends ConsumerWidget {
+  const StickyFailureThresholdItem({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l = context.appLocalizations;
+    final threshold = ref.watch(
+      appSettingProvider.select((state) => state.stickyFailureThreshold),
+    );
+    return ListItem.input(
+      leading: const Icon(Icons.repeat_outlined),
+      title: Text(l.stickyFailureThreshold),
+      subtitle: Text('$threshold'),
+      dialogTitle: l.stickyFailureThreshold,
+      resetValue: '$defaultStickyFailureThreshold',
+      value: '$threshold',
+      maxLength: TextInputLimits.interval,
+      keyboardType: TextInputType.number,
+      validator: (value) {
+        final count = int.tryParse(value ?? '');
+        return count != null && count >= 1 && count <= maxStickyFailureThreshold
+            ? null
+            : l.stickyFailureThresholdRange;
+      },
+      onChanged: (value) {
+        if (value == null) return;
+        ref
+            .read(appSettingProvider.notifier)
+            .update(
+              (state) =>
+                  state.copyWith(stickyFailureThreshold: int.parse(value)),
+            );
+      },
+    );
+  }
+}
+
+class StickyTestUrlItem extends ConsumerWidget {
+  const StickyTestUrlItem({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l = context.appLocalizations;
+    final url = ref.watch(
+      appSettingProvider.select((state) => state.stickyTestUrl),
+    );
+    return ListItem.input(
+      leading: const Icon(Icons.link_outlined),
+      title: Text(l.stickyTestUrl),
+      subtitle: Text(url),
+      dialogTitle: l.stickyTestUrl,
+      resetValue: defaultStickyTestUrl,
+      value: url,
+      maxLength: TextInputLimits.url,
+      keyboardType: TextInputType.url,
+      validator: (value) => isValidStickyTestUrl(value?.trim() ?? '')
+          ? null
+          : l.urlTip(l.stickyTestUrl),
+      onChanged: (value) {
+        if (value == null) return;
+        ref
+            .read(appSettingProvider.notifier)
+            .update((state) => state.copyWith(stickyTestUrl: value.trim()));
+      },
+    );
+  }
+}
+
 class PortItem extends ConsumerWidget {
   const PortItem({super.key});
 
@@ -336,6 +439,14 @@ class GeneralListView extends ConsumerWidget {
             AuthenticationPasswordItem(),
           ],
         ),
+      ...generateSection(
+        title: appLocalizations.stickyFailover,
+        items: const [
+          StickyTimeoutItem(),
+          StickyFailureThresholdItem(),
+          StickyTestUrlItem(),
+        ],
+      ),
       ...generateSection(
         title: appLocalizations.other,
         items: [

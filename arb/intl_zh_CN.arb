@@ -1,4 +1,10 @@
 {
+  "stickyFailureThreshold": "连续失败次数",
+  "stickyFailureThresholdRange": "请输入 1–10 的整数",
+  "stickyFailover": "粘滞故障切换",
+  "stickyTimeout": "故障探测超时",
+  "stickyTestUrl": "故障探测 URL",
+  "stickyTimeoutRange": "请输入 1–60 秒的整数",
   "rule": "规则",
   "rules": "规则",
   "global": "全局",

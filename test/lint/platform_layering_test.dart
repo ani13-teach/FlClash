@@ -29,7 +29,7 @@ Set<String> _closureOfCommonBarrel() {
       return 'lib/${uri.substring('package:fl_clash/'.length)}';
     }
     if (uri.startsWith('dart:') || uri.startsWith('package:')) return uri;
-    return p.normalize(p.join(p.dirname(from), uri));
+    return p.posix.normalize(p.posix.join(p.posix.dirname(from), uri));
   }
 
   final directive = RegExp(
@@ -62,7 +62,7 @@ Iterable<File> _dartFilesIn(String root) sync* {
   for (final entity in directory.listSync(recursive: true)) {
     if (entity is File &&
         entity.path.endsWith('.dart') &&
-        !entity.path.contains('/generated/')) {
+        !entity.path.replaceAll('\\', '/').contains('/generated/')) {
       yield entity;
     }
   }
@@ -91,7 +91,7 @@ void main() {
 
     for (final root in ['lib/common', 'lib/enum', 'lib/models']) {
       for (final file in _dartFilesIn(root)) {
-        final relative = p.relative(file.path);
+        final relative = p.relative(file.path).replaceAll('\\', '/');
         if (_platformModules.contains(relative)) {
           continue;
         }

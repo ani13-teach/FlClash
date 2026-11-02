@@ -1091,6 +1091,20 @@ class MessageLookup extends MessageLookupByLibrary {
     "statusDesc": MessageLookupByLibrary.simpleMessage(
       "When disabled, the system DNS is used",
     ),
+    "stickyFailover": MessageLookupByLibrary.simpleMessage("Sticky failover"),
+    "stickyFailureThreshold": MessageLookupByLibrary.simpleMessage(
+      "Consecutive failures before switching",
+    ),
+    "stickyFailureThresholdRange": MessageLookupByLibrary.simpleMessage(
+      "Enter a whole number from 1 to 10",
+    ),
+    "stickyTestUrl": MessageLookupByLibrary.simpleMessage("Failure probe URL"),
+    "stickyTimeout": MessageLookupByLibrary.simpleMessage(
+      "Failure probe timeout",
+    ),
+    "stickyTimeoutRange": MessageLookupByLibrary.simpleMessage(
+      "Enter a whole number from 1 to 60 seconds",
+    ),
     "stop": MessageLookupByLibrary.simpleMessage("Stop"),
     "stopVpn": MessageLookupByLibrary.simpleMessage("Stopping VPN..."),
     "style": MessageLookupByLibrary.simpleMessage("Style"),

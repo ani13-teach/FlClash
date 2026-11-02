@@ -277,7 +277,10 @@ void main() {
     await exportAndWait(tester);
 
     expect(filePicker.calls, 0);
-    expect(find.textContaining('FileSystemException'), findsOneWidget);
+    expect(
+      find.textContaining(RegExp('FileSystemException|PathNotFoundException')),
+      findsOneWidget,
+    );
     expect(find.byIcon(MessageLevel.error.icon!), findsOneWidget);
     expect(find.text(currentAppLocalizations.exportSuccess), findsNothing);
     expect(tester.widget<IconButton>(exportButton()).onPressed, isNotNull);

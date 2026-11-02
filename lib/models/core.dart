@@ -1,3 +1,4 @@
+import 'package:fl_clash/common/constant.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
@@ -10,6 +11,15 @@ abstract class SetupParams with _$SetupParams {
   const factory SetupParams({
     @JsonKey(name: 'selected-map') required Map<String, String> selectedMap,
     @JsonKey(name: 'test-url') required String testUrl,
+    @Default(defaultStickyTestUrl)
+    @JsonKey(name: 'sticky-test-url')
+    String stickyTestUrl,
+    @Default(defaultStickyTimeout)
+    @JsonKey(name: 'sticky-timeout')
+    int stickyTimeout,
+    @Default(defaultStickyFailureThreshold)
+    @JsonKey(name: 'sticky-failure-threshold')
+    int stickyFailureThreshold,
   }) = _SetupParams;
 
   factory SetupParams.fromJson(Map<String, dynamic> json) =>
@@ -34,6 +44,15 @@ abstract class UpdateParams with _$UpdateParams {
     @Default([]) List<String> authentication,
     @Default(false) @JsonKey(name: 'geo-auto-update') bool geoAutoUpdate,
     @Default(24) @JsonKey(name: 'geo-update-interval') int geoUpdateInterval,
+    @Default(defaultStickyTestUrl)
+    @JsonKey(name: 'sticky-test-url')
+    String stickyTestUrl,
+    @Default(defaultStickyTimeout)
+    @JsonKey(name: 'sticky-timeout')
+    int stickyTimeout,
+    @Default(defaultStickyFailureThreshold)
+    @JsonKey(name: 'sticky-failure-threshold')
+    int stickyFailureThreshold,
   }) = _UpdateParams;
 
   factory UpdateParams.fromJson(Map<String, dynamic> json) =>

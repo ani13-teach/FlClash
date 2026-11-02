@@ -186,8 +186,11 @@ func patchSelectGroup(mapping map[string]string) {
 
 func defaultSetupParams() *SetupParams {
 	return &SetupParams{
-		TestURL:     defaultTestURL,
-		SelectedMap: map[string]string{},
+		TestURL:                defaultTestURL,
+		StickyTestURL:          stickyURL,
+		StickyTimeout:          int(stickyTimeout / time.Second),
+		StickyFailureThreshold: stickyFailureThreshold,
+		SelectedMap:            map[string]string{},
 	}
 }
 
@@ -316,6 +319,7 @@ func updateConfig(params *UpdateParams) error {
 
 	updateListeners(currentConfig)
 	syncGeoUpdater(params.GeoAutoUpdate, params.GeoUpdateInterval)
+	syncStickySettings(params.StickyTestURL, params.StickyTimeout, params.StickyFailureThreshold)
 	return nil
 }
 
@@ -381,6 +385,7 @@ func applyConfig(params *SetupParams) error {
 	defer endStickyConfig()
 
 	setTestURL(params.TestURL)
+	stickySettings = normalizeStickySettings(params.StickyTestURL, params.StickyTimeout, params.StickyFailureThreshold)
 	configData, err := os.ReadFile(filepath.Join(constant.Path.HomeDir(), "config.yaml"))
 	var cfg *config.Config
 	if err == nil {

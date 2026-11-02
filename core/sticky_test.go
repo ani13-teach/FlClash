@@ -26,13 +26,17 @@ type stickyTestNode struct {
 	calls       atomic.Int32
 	healthy     bool
 	onProbe     func(context.Context)
+	onURLTest   func(context.Context, string)
 	probeResult func(context.Context) (uint16, error)
 }
 
 func (p *stickyTestNode) Type() constant.AdapterType { return constant.Shadowsocks }
 
-func (p *stickyTestNode) URLTest(ctx context.Context, _ string, _ utils.IntRanges[uint16]) (uint16, error) {
+func (p *stickyTestNode) URLTest(ctx context.Context, url string, _ utils.IntRanges[uint16]) (uint16, error) {
 	p.calls.Add(1)
+	if p.onURLTest != nil {
+		p.onURLTest(ctx, url)
+	}
 	if p.onProbe != nil {
 		p.onProbe(ctx)
 	}
@@ -83,7 +87,8 @@ func stickyTestBackend(t *testing.T, proxies map[string]constant.Proxy) *mihomoS
 	configureSticky([]byte("profile-a"), true)
 	ctx, cancel := context.WithCancel(context.Background())
 	backend := &mihomoStickyBackend{
-		ctx: ctx, cancel: cancel,
+		settings: normalizeStickySettings("", 0, 0),
+		ctx:      ctx, cancel: cancel,
 		views:  make(map[string]stickyView),
 		probes: make(map[constant.Proxy]*stickyProbe),
 		slots:  make(chan struct{}, 16),

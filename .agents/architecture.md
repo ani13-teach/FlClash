@@ -156,6 +156,13 @@ directions. The envelope is the only JSON serialization layer: keep arguments, r
 values rather than embedding pre-encoded JSON strings. Plain domain strings, such as country codes or provider contents,
 remain strings.
 
+Sticky settings travel as `sticky-test-url`, `sticky-timeout` (whole seconds, 1–60, default 5), and
+`sticky-failure-threshold` (integer 1–10, default 2) in setup and update parameters. The probe URL defaults to
+`https://cp.cloudflare.com` independently of manual delay tests. Android's persisted `SharedState.setupParams` must
+retain these keys for native restarts. Core captures settings per Sticky run; a changed setting cancels that run,
+drops probe caches/failure counts, and reconciles under `configMu` without changing the selected node. Missing or
+invalid settings use defaults, while absent update fields leave their current values unchanged.
+
 Go event delivery is intentionally non-blocking:
 
 - Loaded-provider and geo-update events use a dedicated 256-entry state queue. It never evicts queued state; when full,

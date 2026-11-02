@@ -88,6 +88,11 @@ const repository = 'chen08209/FlClash';
 const maxMobileWidth = 600;
 const maxLaptopWidth = 840;
 const defaultTestUrl = 'https://www.gstatic.com/generate_204';
+const defaultStickyTestUrl = 'https://cp.cloudflare.com';
+const defaultStickyTimeout = 5;
+const maxStickyTimeout = 60;
+const defaultStickyFailureThreshold = 2;
+const maxStickyFailureThreshold = 10;
 final commonFilter = ImageFilter.blur(
   sigmaX: 5,
   sigmaY: 5,

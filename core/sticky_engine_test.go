@@ -11,27 +11,31 @@ import (
 )
 
 type stickyFake struct {
-	mu         sync.Mutex
-	snapshot   stickySnapshot
-	available  bool
-	healthy    map[string]bool
-	probeErrs  map[string]error
-	accept     bool
-	onProbe    func(context.Context, string)
-	onSnapshot func()
-	probed     []string
-	committed  []string
+	mu               sync.Mutex
+	snapshot         stickySnapshot
+	available        bool
+	failureThreshold int
+	healthy          map[string]bool
+	probeErrs        map[string]error
+	accept           bool
+	onProbe          func(context.Context, string)
+	onSnapshot       func()
+	probed           []string
+	committed        []string
 }
 
 func newStickyFake(current string, members ...string) *stickyFake {
 	return &stickyFake{
-		snapshot:  stickySnapshot{Group: "auto", Current: current, Members: members, Revision: 1},
-		available: true,
-		healthy:   map[string]bool{},
-		probeErrs: map[string]error{},
-		accept:    true,
+		snapshot:         stickySnapshot{Group: "auto", Current: current, Members: members, Revision: 1},
+		available:        true,
+		failureThreshold: stickyFailureThreshold,
+		healthy:          map[string]bool{},
+		probeErrs:        map[string]error{},
+		accept:           true,
 	}
 }
+
+func (fake *stickyFake) FailureThreshold() int { return fake.failureThreshold }
 
 func (fake *stickyFake) Snapshot(string) (stickySnapshot, bool) {
 	if fake.onSnapshot != nil {

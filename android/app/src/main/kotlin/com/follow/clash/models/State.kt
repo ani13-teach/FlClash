@@ -20,4 +20,10 @@ data class SetupParams(
     val testUrl: String,
     @SerializedName("selected-map")
     val selectedMap: Map<String, String>,
+    @SerializedName("sticky-test-url")
+    val stickyTestUrl: String? = null,
+    @SerializedName("sticky-timeout")
+    val stickyTimeout: Int? = null,
+    @SerializedName("sticky-failure-threshold")
+    val stickyFailureThreshold: Int? = null,
 )

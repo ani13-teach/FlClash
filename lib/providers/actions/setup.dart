@@ -36,10 +36,14 @@ class SetupAction extends _$SetupAction {
 
   SetupParams get _setupParams {
     final selectedMap = ref.read(selectedMapProvider);
-    final testUrl = ref.read(
-      appSettingProvider.select((state) => state.testUrl),
+    final settings = ref.read(appSettingProvider);
+    return SetupParams(
+      selectedMap: selectedMap,
+      testUrl: settings.testUrl,
+      stickyTestUrl: settings.stickyTestUrl,
+      stickyTimeout: settings.stickyTimeout,
+      stickyFailureThreshold: settings.stickyFailureThreshold,
     );
-    return SetupParams(selectedMap: selectedMap, testUrl: testUrl);
   }
 
   Future<bool> fullSetup() async {

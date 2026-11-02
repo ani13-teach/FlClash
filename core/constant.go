@@ -16,24 +16,30 @@ type InitParams struct {
 }
 
 type SetupParams struct {
-	SelectedMap map[string]string `json:"selected-map"`
-	TestURL     string            `json:"test-url"`
+	SelectedMap            map[string]string `json:"selected-map"`
+	TestURL                string            `json:"test-url"`
+	StickyTestURL          string            `json:"sticky-test-url"`
+	StickyTimeout          int               `json:"sticky-timeout"`
+	StickyFailureThreshold int               `json:"sticky-failure-threshold"`
 }
 
 type UpdateParams struct {
-	Tun                *tunSchema         `json:"tun"`
-	AllowLan           *bool              `json:"allow-lan"`
-	MixedPort          *int               `json:"mixed-port"`
-	FindProcessMode    *P.FindProcessMode `json:"find-process-mode"`
-	Mode               *tunnel.TunnelMode `json:"mode"`
-	LogLevel           *log.LogLevel      `json:"log-level"`
-	IPv6               *bool              `json:"ipv6"`
-	TCPConcurrent      *bool              `json:"tcp-concurrent"`
-	ExternalController *string            `json:"external-controller"`
-	UnifiedDelay       *bool              `json:"unified-delay"`
-	Authentication     *[]string          `json:"authentication"`
-	GeoAutoUpdate      *bool              `json:"geo-auto-update"`
-	GeoUpdateInterval  *int               `json:"geo-update-interval"`
+	Tun                    *tunSchema         `json:"tun"`
+	AllowLan               *bool              `json:"allow-lan"`
+	MixedPort              *int               `json:"mixed-port"`
+	FindProcessMode        *P.FindProcessMode `json:"find-process-mode"`
+	Mode                   *tunnel.TunnelMode `json:"mode"`
+	LogLevel               *log.LogLevel      `json:"log-level"`
+	IPv6                   *bool              `json:"ipv6"`
+	TCPConcurrent          *bool              `json:"tcp-concurrent"`
+	ExternalController     *string            `json:"external-controller"`
+	UnifiedDelay           *bool              `json:"unified-delay"`
+	Authentication         *[]string          `json:"authentication"`
+	GeoAutoUpdate          *bool              `json:"geo-auto-update"`
+	GeoUpdateInterval      *int               `json:"geo-update-interval"`
+	StickyTestURL          *string            `json:"sticky-test-url"`
+	StickyTimeout          *int               `json:"sticky-timeout"`
+	StickyFailureThreshold *int               `json:"sticky-failure-threshold"`
 }
 
 type tunSchema struct {

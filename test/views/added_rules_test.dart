@@ -75,14 +75,23 @@ void main() {
   late _RulesFilePicker filePicker;
   late FilePickerPlatform previousPicker;
   late Directory home;
+  final supportDirectory = AppPath.supportDirectory;
+  final temporaryDirectory = AppPath.temporaryDirectory;
+  final cacheDirectory = AppPath.cacheDirectory;
   final downloadDirectory = AppPath.downloadDirectory;
 
   setUpAll(() {
     home = Directory.systemTemp.createTempSync('flclash-rules-transfer-');
+    AppPath.supportDirectory = () async => home;
+    AppPath.temporaryDirectory = () async => home;
+    AppPath.cacheDirectory = () async => home;
     AppPath.downloadDirectory = () async => home;
   });
 
   tearDownAll(() {
+    AppPath.supportDirectory = supportDirectory;
+    AppPath.temporaryDirectory = temporaryDirectory;
+    AppPath.cacheDirectory = cacheDirectory;
     AppPath.downloadDirectory = downloadDirectory;
     home.deleteSync(recursive: true);
   });

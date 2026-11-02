@@ -55,6 +55,66 @@ class AppLocalizations {
     return Localizations.of<AppLocalizations>(context, AppLocalizations);
   }
 
+  /// `Consecutive failures before switching`
+  String get stickyFailureThreshold {
+    return Intl.message(
+      'Consecutive failures before switching',
+      name: 'stickyFailureThreshold',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Enter a whole number from 1 to 10`
+  String get stickyFailureThresholdRange {
+    return Intl.message(
+      'Enter a whole number from 1 to 10',
+      name: 'stickyFailureThresholdRange',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Sticky failover`
+  String get stickyFailover {
+    return Intl.message(
+      'Sticky failover',
+      name: 'stickyFailover',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Failure probe timeout`
+  String get stickyTimeout {
+    return Intl.message(
+      'Failure probe timeout',
+      name: 'stickyTimeout',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Failure probe URL`
+  String get stickyTestUrl {
+    return Intl.message(
+      'Failure probe URL',
+      name: 'stickyTestUrl',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Enter a whole number from 1 to 60 seconds`
+  String get stickyTimeoutRange {
+    return Intl.message(
+      'Enter a whole number from 1 to 60 seconds',
+      name: 'stickyTimeoutRange',
+      desc: '',
+      args: [],
+    );
+  }
+
   /// `Rule`
   String get rule {
     return Intl.message('Rule', name: 'rule', desc: '', args: []);

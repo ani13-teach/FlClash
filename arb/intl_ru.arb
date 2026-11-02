@@ -1,4 +1,10 @@
 {
+  "stickyFailureThreshold": "Число последовательных сбоев",
+  "stickyFailureThresholdRange": "Введите целое число от 1 до 10",
+  "stickyFailover": "Липкое переключение при сбое",
+  "stickyTimeout": "Тайм-аут проверки сбоя",
+  "stickyTestUrl": "URL проверки сбоя",
+  "stickyTimeoutRange": "Введите целое число от 1 до 60 секунд",
   "rule": "Правило",
   "rules": "Правила",
   "global": "Глобальный",

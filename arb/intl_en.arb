@@ -1,4 +1,10 @@
 {
+  "stickyFailureThreshold": "Consecutive failures before switching",
+  "stickyFailureThresholdRange": "Enter a whole number from 1 to 10",
+  "stickyFailover": "Sticky failover",
+  "stickyTimeout": "Failure probe timeout",
+  "stickyTestUrl": "Failure probe URL",
+  "stickyTimeoutRange": "Enter a whole number from 1 to 60 seconds",
   "rule": "Rule",
   "rules": "Rules",
   "global": "Global",
